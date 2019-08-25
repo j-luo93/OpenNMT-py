@@ -146,9 +146,9 @@ class TransformerDecoder(DecoderBase):
 
         self.transformer_layers = nn.ModuleList(
             [TransformerDecoderLayer(d_model, heads, d_ff, dropout,
-             attention_dropout, self_attn_type=self_attn_type,
-             max_relative_positions=max_relative_positions,
-             aan_useffn=aan_useffn)
+                                     attention_dropout, self_attn_type=self_attn_type,
+                                     max_relative_positions=max_relative_positions,
+                                     aan_useffn=aan_useffn)
              for i in range(num_layers)])
 
         # previously, there was a GlobalAttention module here for copy
@@ -195,6 +195,10 @@ class TransformerDecoder(DecoderBase):
     def detach_state(self):
         self.state["src"] = self.state["src"].detach()
 
+    def _get_max_len(self):
+        src_max_len = self.state["src"].shape[0]
+        return src_max_len
+
     def forward(self, tgt, memory_bank, step=None, **kwargs):
         """Decode, possibly stepwise."""
         if step == 0:
@@ -210,7 +214,8 @@ class TransformerDecoder(DecoderBase):
 
         pad_idx = self.embeddings.word_padding_idx
         src_lens = kwargs["memory_lengths"]
-        src_max_len = self.state["src"].shape[0]
+
+        src_max_len = self._get_max_len()
         src_pad_mask = ~sequence_mask(src_lens, src_max_len).unsqueeze(1)
         tgt_pad_mask = tgt_words.data.eq(pad_idx).unsqueeze(1)  # [B, 1, T_tgt]
 
@@ -255,3 +260,12 @@ class TransformerDecoder(DecoderBase):
         self.embeddings.update_dropout(dropout)
         for layer in self.transformer_layers:
             layer.update_dropout(dropout, attention_dropout)
+
+
+class TransformerEatDecoder(TransformerDecoder):
+
+    def _get_max_len(self):
+        ret = super()._get_max_len()
+        if ret % 3 > 0:
+            raise RuntimeError(f'max length should be divided by 3, but got {ret}.')
+        return ret // 3

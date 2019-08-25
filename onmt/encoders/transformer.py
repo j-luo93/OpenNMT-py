@@ -119,6 +119,10 @@ class TransformerEncoder(EncoderBase):
         emb = self.embeddings(src)
         return emb
 
+    def _get_mask(self, lengths):
+        mask = ~sequence_mask(lengths).unsqueeze(1)
+        return mask
+
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
         self._check_args(src, lengths)
@@ -126,7 +130,7 @@ class TransformerEncoder(EncoderBase):
         emb = self._get_embedding_seq(src)
 
         out = emb.transpose(0, 1).contiguous()
-        mask = ~sequence_mask(lengths).unsqueeze(1)
+        mask = self._get_mask(lengths)
         # Run the forward pass of every layer of the tranformer.
         for layer in self.transformer:
             out = layer(out, mask)
@@ -149,13 +153,19 @@ class TransformerEatEncoder(TransformerEncoder):
         self.eat_layer = EatLayer(d_model, d_model, d_model)
 
     def _get_embedding_seq(self, src):
-        sl, bs = src.shape
+        sl, bs, _ = src.shape
         if sl % 3 != 0:
             raise RuntimeError(f'Length should be divided by 3, but got {sl}.')
 
         sl = sl // 3
-        src = src.view(sl, 3, bs)
-        emb_triplet = self.embeddings(src)
-        e_in, a_in, t_in = emb_triplet.unbind(dim=1)
+        e_sym, a_sym, t_sym = src.view(sl, 3, bs, 1).unbind(dim=1)
+        e_in = self.embeddings(e_sym)
+        a_in = self.embeddings(a_sym)
+        t_in = self.embeddings(t_sym)
         emb = self.eat_layer(e_in, a_in, t_in)
         return emb
+
+    def _get_mask(self, lengths):
+        if (lengths % 3 > 0).any().item():
+            raise RuntimeError(f'Length should be divided by 3.')
+        return super()._get_mask(lengths // 3)
