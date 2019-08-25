@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
+from onmt.modules.eat_layer import EatLayer
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.misc import sequence_mask
 
@@ -114,11 +115,15 @@ class TransformerEncoder(EncoderBase):
             embeddings,
             opt.max_relative_positions)
 
+    def _get_embedding_seq(self, src):
+        emb = self.embeddings(src)
+        return emb
+
     def forward(self, src, lengths=None):
         """See :func:`EncoderBase.forward()`"""
         self._check_args(src, lengths)
 
-        emb = self.embeddings(src)
+        emb = self._get_embedding_seq(src)
 
         out = emb.transpose(0, 1).contiguous()
         mask = ~sequence_mask(lengths).unsqueeze(1)
@@ -133,3 +138,24 @@ class TransformerEncoder(EncoderBase):
         self.embeddings.update_dropout(dropout)
         for layer in self.transformer:
             layer.update_dropout(dropout, attention_dropout)
+
+
+class TransformerEatEncoder(TransformerEncoder):
+
+    def __init__(self, num_layers, d_model, heads, d_ff, dropout,
+                 attention_dropout, embeddings, max_relative_positions):
+        super().__init__(num_layers, d_model, heads, d_ff, dropout, attention_dropout,
+                         embeddings, max_relative_positions)
+        self.eat_layer = EatLayer(d_model, d_model, d_model)
+
+    def _get_embedding_seq(self, src):
+        sl, bs = src.shape
+        if sl % 3 != 0:
+            raise RuntimeError(f'Length should be divided by 3, but got {sl}.')
+
+        sl = sl // 3
+        src = src.view(sl, 3, bs)
+        emb_triplet = self.embeddings(src)
+        e_in, a_in, t_in = emb_triplet.unbind(dim=1)
+        emb = self.eat_layer(e_in, a_in, t_in)
+        return emb
