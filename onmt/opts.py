@@ -206,6 +206,9 @@ def preprocess_opts(parser):
     group.add('--valid_tgt', '-valid_tgt',
               help="Path to the validation target data")
 
+    group.add('--crosslingual_valid_src', '-cvs',
+              help="Path to the crosslingual validation source data")
+
     group.add('--src_dir', '-src_dir', default="",
               help="Source directory for image or audio files.")
 

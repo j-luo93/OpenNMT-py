@@ -32,7 +32,7 @@ def check_existing_pt_files(opt):
 
 
 def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, opt):
-    assert corpus_type in ['train', 'valid']
+    assert corpus_type in ['train', 'valid', 'cl_valid']
 
     if corpus_type == 'train':
         counters = defaultdict(Counter)
@@ -40,7 +40,10 @@ def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, opt):
         tgts = opt.train_tgt
         ids = opt.train_ids
     else:
-        srcs = [opt.valid_src]
+        if corpus_type == 'valid':
+            srcs = [opt.valid_src]
+        else:
+            srcs = [opt.crosslingual_valid_src]
         tgts = [opt.valid_tgt]
         ids = [None]
 
@@ -203,6 +206,9 @@ def main(opt):
     if opt.valid_src and opt.valid_tgt:
         logger.info("Building & saving validation data...")
         build_save_dataset('valid', fields, src_reader, tgt_reader, opt)
+    if opt.crosslingual_valid_src:
+        logger.info("Building & saving crosslingual validation data...")
+        build_save_dataset('cl_valid', fields, src_reader, tgt_reader, opt)
 
 
 def _get_parser():
