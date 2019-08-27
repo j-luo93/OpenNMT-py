@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from onmt.encoders.transformer import TransformerEatEncoder
 from onmt.modules.eat_layer import EatLayer
+from onmt.modules.embeddings import Embeddings
 
 DIM = 25
 SEQ_LEN = 15
@@ -27,10 +28,11 @@ class TestEatLayer(TestCase):
 class TestTransformerEat(TestCase):
 
     def setUp(self):
-        emb = nn.Embedding(VOCAB_SIZE, DIM)
+        emb = Embeddings(DIM, VOCAB_SIZE, 0)
         self.encoder = TransformerEatEncoder(1, DIM, 5, DIM, 0.1, 0.1, emb, 0)
 
     def test_basic(self):
-        src = torch.randint(VOCAB_SIZE, (SEQ_LEN * 3, BATCH_SIZE))
-        lengths = torch.randint(SEQ_LEN, (BATCH_SIZE,)) + 1
+        src = torch.randint(VOCAB_SIZE, (SEQ_LEN * 3, BATCH_SIZE, 1))
+        lengths = (torch.randint(SEQ_LEN, (BATCH_SIZE,)) + 1) * 3
+        lengths[0] = SEQ_LEN * 3
         emb, out, lengths = self.encoder(src, lengths=lengths)
