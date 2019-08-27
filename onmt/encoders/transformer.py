@@ -102,9 +102,8 @@ class TransformerEncoder(EncoderBase):
         self.layer_norm = nn.LayerNorm(d_model, eps=1e-6)
 
     @classmethod
-    def from_opt(cls, opt, embeddings):
-        """Alternate constructor."""
-        return cls(
+    def prepare_arg_list(cls, opt, embeddings):
+        return [
             opt.enc_layers,
             opt.enc_rnn_size,
             opt.heads,
@@ -113,7 +112,14 @@ class TransformerEncoder(EncoderBase):
             opt.attention_dropout[0] if type(opt.attention_dropout)
             is list else opt.attention_dropout,
             embeddings,
-            opt.max_relative_positions)
+            opt.max_relative_positions
+        ]
+
+    @classmethod
+    def from_opt(cls, opt, embeddings):
+        """Alternate constructor."""
+        prepare_arg_list = cls.prepare_arg_list(opt, embeddings)
+        return cls(*prepared_arg_list)
 
     def _get_embedding_seq(self, src):
         emb = self.embeddings(src)
@@ -147,10 +153,19 @@ class TransformerEncoder(EncoderBase):
 class TransformerEatEncoder(TransformerEncoder):
 
     def __init__(self, num_layers, d_model, heads, d_ff, dropout,
-                 attention_dropout, embeddings, max_relative_positions):
+                 attention_dropout, embeddings, max_relative_positions, use_embedding_proj):
         super().__init__(num_layers, d_model, heads, d_ff, dropout, attention_dropout,
                          embeddings, max_relative_positions)
         self.eat_layer = EatLayer(d_model, d_model, d_model)
+        self.use_embedding_proj = use_embedding_proj
+        if self.use_embedding_proj:
+            self.embedding_proj = nn.Linear(self.embeddings.embedding_size, d_model)
+
+    @classmethod
+    def prepare_arg_list(cls, opt, embeddings):
+        prepared_arg_list = super().prepare_arg_list(opt, embeddings)
+        prepared_arg_list.append(opt.use_embedding_proj)
+        return prepared_arg_list
 
     def _get_embedding_seq(self, src):
         sl, bs, _ = src.shape
@@ -162,6 +177,12 @@ class TransformerEatEncoder(TransformerEncoder):
         e_in = self.embeddings(e_sym)
         a_in = self.embeddings(a_sym)
         t_in = self.embeddings(t_sym)
+
+        if self.use_embedding_proj:
+            e_in = self.embedding_proj(e_in)
+            a_in = self.embedding_proj(a_in)
+            t_in = self.embedding_proj(t_in)
+
         emb = self.eat_layer(e_in, a_in, t_in)
         return emb
 

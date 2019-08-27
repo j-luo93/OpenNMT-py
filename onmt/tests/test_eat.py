@@ -14,25 +14,41 @@ VOCAB_SIZE = 100
 
 class TestEatLayer(TestCase):
 
-    def setUp(self):
-        self.eat_layer = EatLayer(DIM, DIM, DIM)
-
-    def test_basic(self):
+    def _test_mode(self, mode):
+        eat_layer = EatLayer(DIM, DIM, DIM, mode=mode)
         e_in = torch.randn(SEQ_LEN, BATCH_SIZE, DIM)
         a_in = torch.randn(SEQ_LEN, BATCH_SIZE, DIM)
         t_in = torch.randn(SEQ_LEN, BATCH_SIZE, DIM)
-        output = self.eat_layer(e_in, a_in, t_in)
+        self.eat_layer = EatLayer(DIM, DIM, DIM)
+        output = eat_layer(e_in, a_in, t_in)
         self.assertTupleEqual(output.shape, (SEQ_LEN, BATCH_SIZE, DIM))
+
+    def test_nonlinear(self):
+        self._test_mode('nonlinear')
+
+    def test_sum(self):
+        self._test_mode('sum')
+
+    def test_residual(self):
+        self._test_mode('residual')
 
 
 class TestTransformerEat(TestCase):
 
-    def setUp(self):
+    def _get_encoder(self, use_embedding_proj):
         emb = Embeddings(DIM, VOCAB_SIZE, 0)
-        self.encoder = TransformerEatEncoder(1, DIM, 5, DIM, 0.1, 0.1, emb, 0)
+        encoder = TransformerEatEncoder(1, DIM, 5, DIM, 0.1, 0.1, emb, 0, use_embedding_proj)
+        return encoder
 
-    def test_basic(self):
+    def _test_routine(self, use_embedding_proj):
         src = torch.randint(VOCAB_SIZE, (SEQ_LEN * 3, BATCH_SIZE, 1))
         lengths = (torch.randint(SEQ_LEN, (BATCH_SIZE,)) + 1) * 3
         lengths[0] = SEQ_LEN * 3
-        emb, out, lengths = self.encoder(src, lengths=lengths)
+        encoder = self._get_encoder(use_embedding_proj)
+        emb, out, lengths = encoder(src, lengths=lengths)
+
+    def test_basic(self):
+        self._test_routine(False)
+
+    def test_use_embedding_proj(self):
+        self._test_routine(True)

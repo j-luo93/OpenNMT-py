@@ -79,6 +79,9 @@ def model_opts(parser):
                    "are experimental. Options are "
                    "[rnn|transformer|cnn].")
 
+    group.add('--use_embedding_proj', '-uep', action='store_true',
+              help='Use an additional projection layer right after the embedding layer')
+
     group.add('--layers', '-layers', type=int, default=-1,
               help='Number of layers in enc/dec.')
     group.add('--enc_layers', '-enc_layers', type=int, default=2,
