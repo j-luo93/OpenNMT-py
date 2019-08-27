@@ -26,7 +26,7 @@ class PositionalEncoding(nn.Module):
         pe = torch.zeros(max_len, dim)
         position = torch.arange(0, max_len).unsqueeze(1)
         div_term = torch.exp((torch.arange(0, dim, 2, dtype=torch.float) *
-                             -(math.log(10000.0) / dim)))
+                              -(math.log(10000.0) / dim)))
         pe[:, 0::2] = torch.sin(position.float() * div_term)
         pe[:, 1::2] = torch.cos(position.float() * div_term)
         pe = pe.unsqueeze(1)
@@ -227,7 +227,7 @@ class Embeddings(nn.Module):
         if n_feats != len(feat_padding_idx):
             raise ValueError("Got unequal number of feat_vocab_sizes and "
                              "feat_padding_idx ({:d} != {:d})".format(
-                                n_feats, len(feat_padding_idx)))
+                                 n_feats, len(feat_padding_idx)))
 
     @property
     def word_lut(self):
@@ -281,3 +281,24 @@ class Embeddings(nn.Module):
     def update_dropout(self, dropout):
         if self.position_encoding:
             self._modules['make_embedding'][1].dropout.p = dropout
+
+
+class XEmbeddings(Embeddings):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        dim = self.embedding_size
+        self.almt = nn.Linear(dim, dim, bias=False)
+        self._mapping = False
+
+    def mapping_on(self):
+        self._mapping = True
+
+    def mapping_off(self):
+        self._mapping = False
+
+    def forward(self, source, step=None):
+        ret = super().forward(source, step=step)
+        if self._mapping:
+            return self.almt(ret)
+        return ret

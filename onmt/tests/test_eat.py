@@ -1,10 +1,11 @@
 from unittest import TestCase
+from unittest.mock import Mock
 
 import torch
 import torch.nn as nn
-from onmt.encoders.transformer import TransformerEatEncoder
+from onmt.encoders.transformer import TransformerEatEncoder, TransformerXEncoder
 from onmt.modules.eat_layer import EatLayer
-from onmt.modules.embeddings import Embeddings
+from onmt.modules.embeddings import Embeddings, XEmbeddings
 
 DIM = 25
 SEQ_LEN = 15
@@ -52,3 +53,38 @@ class TestTransformerEat(TestCase):
 
     def test_use_embedding_proj(self):
         self._test_routine(True)
+
+
+class TestTransformerX(TestCase):
+
+    def _get_encoder(self, mode):
+        x_emb = XEmbeddings(DIM, VOCAB_SIZE, 0)
+        args = [1, DIM, 5, DIM, 0.1, 0.1, x_emb, 0]
+        if mode == 'eat':
+            args.append(False)
+        encoder = TransformerXEncoder(*args, mode=mode)
+        return encoder
+
+    def _test_routine(self, mode):
+        encoder = self._get_encoder(mode)
+        # Replace the module forward call with a mock. Note that the original module has to be deleted first to bypass the __setattr__ check in nn.Module.
+        mocked_almt = Mock()
+        mocked_almt.side_effect = lambda x: x
+        del encoder.embeddings.almt
+        encoder.embeddings.almt = mocked_almt
+
+        src = torch.randint(VOCAB_SIZE, (SEQ_LEN * 3, BATCH_SIZE, 1))
+        lengths = (torch.randint(SEQ_LEN, (BATCH_SIZE,)) + 1) * 3
+        lengths[0] = SEQ_LEN * 3
+        encoder.crosslingual_off()
+        _ = encoder(src, lengths)
+        mocked_almt.assert_not_called()
+        encoder.crosslingual_on()
+        _ = encoder(src, lengths)
+        mocked_almt.assert_called()
+
+    def test_base(self):
+        self._test_routine('base')
+
+    def test_eat(self):
+        self._test_routine('eat')

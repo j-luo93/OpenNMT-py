@@ -13,7 +13,7 @@ from onmt.encoders import str2enc
 
 from onmt.decoders import str2dec
 
-from onmt.modules import Embeddings, VecEmbedding, CopyGenerator
+from onmt.modules import Embeddings, XEmbeddings, VecEmbedding, CopyGenerator
 from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
@@ -47,7 +47,8 @@ def build_embeddings(opt, text_field, for_encoder=True):
     fix_word_vecs = opt.fix_word_vecs_enc if for_encoder \
         else opt.fix_word_vecs_dec
 
-    emb = Embeddings(
+    cls = XEmbeddings if opt.crosslingual else Embeddings
+    emb = cls(
         word_vec_size=emb_dim,
         position_encoding=opt.position_encoding,
         feat_merge=opt.feat_merge,

@@ -731,6 +731,7 @@ class DatasetLazyIter(object):
         if self.is_train and self.repeat:
             # Cycle through the shards indefinitely.
             paths = cycle(paths)
+        # FIXME need to add random sampling of datasets here.
         for path in paths:
             for batch in self._iter_dataset(path):
                 yield batch

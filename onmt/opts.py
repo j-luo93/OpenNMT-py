@@ -18,6 +18,8 @@ def model_opts(parser):
     These options are passed to the construction of the model.
     Be careful with these as they will be used during translation.
     """
+    parser.add('--crosslingual', '-cl', action='store_true',
+               help='Use crosslingual mode.')
 
     # Embedding Options
     group = parser.add_argument_group('Model-Embeddings')

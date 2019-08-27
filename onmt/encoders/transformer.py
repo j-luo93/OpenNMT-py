@@ -190,3 +190,32 @@ class TransformerEatEncoder(TransformerEncoder):
         if (lengths % 3 > 0).any().item():
             raise RuntimeError(f'Length should be divided by 3.')
         return super()._get_mask(lengths // 3)
+
+
+class TransformerXEncoder(nn.Module):
+
+    def __init__(self, *args, mode='base'):
+        assert mode in ['base', 'eat']
+        super().__init__()
+        cls = TransformerEncoder if mode == 'base' else TransformerEatEncoder
+        self.encoder = cls(*args)
+        self._crosslingual = False
+
+    def crosslingual_on(self):
+        self._crosslingual = True
+
+    def crosslingual_off(self):
+        self._crosslingual = False
+
+    def forward(self, src, lengths=None):
+        if self._crosslingual:
+            self.encoder.embeddings.mapping_on()
+        else:
+            self.encoder.embeddings.mapping_off()
+        return self.encoder.forward(src, lengths=lengths)
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return self.encoder.__getattr__(name)
