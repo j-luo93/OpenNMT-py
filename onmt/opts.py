@@ -211,9 +211,6 @@ def preprocess_opts(parser):
     group.add('--valid_tgt', '-valid_tgt',
               help="Path to the validation target data")
 
-    group.add('--crosslingual_valid_src', '-cvs',
-              help="Path to the crosslingual validation source data")
-
     group.add('--src_dir', '-src_dir', default="",
               help="Source directory for image or audio files.")
 
@@ -246,6 +243,7 @@ def preprocess_opts(parser):
     group.add('--tgt_vocab', '-tgt_vocab', default="",
               help="Path to an existing target vocabulary. Format: "
                    "one word per line.")
+    group.add('--force_tgt_vocab', action='store_true', help='Force to use target vocab.')
     group.add('--features_vocabs_prefix', '-features_vocabs_prefix',
               type=str, default='',
               help="Path prefix to existing features vocabularies")

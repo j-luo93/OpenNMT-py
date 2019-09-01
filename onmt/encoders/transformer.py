@@ -118,7 +118,7 @@ class TransformerEncoder(EncoderBase):
     @classmethod
     def from_opt(cls, opt, embeddings):
         """Alternate constructor."""
-        prepare_arg_list = cls.prepare_arg_list(opt, embeddings)
+        prepared_arg_list = cls.prepare_arg_list(opt, embeddings)
         return cls(*prepared_arg_list)
 
     def _get_embedding_seq(self, src):

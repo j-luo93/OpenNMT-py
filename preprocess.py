@@ -17,7 +17,7 @@ import onmt.inputters as inputters
 import onmt.opts as opts
 from onmt.utils.parse import ArgumentParser
 from onmt.inputters.inputter import _build_fields_vocab,\
-                                    _load_vocab
+    _load_vocab
 
 
 def check_existing_pt_files(opt):
@@ -32,7 +32,7 @@ def check_existing_pt_files(opt):
 
 
 def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, opt):
-    assert corpus_type in ['train', 'valid', 'cl_valid']
+    assert corpus_type in ['train', 'valid']
 
     if corpus_type == 'train':
         counters = defaultdict(Counter)
@@ -40,10 +40,7 @@ def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, opt):
         tgts = opt.train_tgt
         ids = opt.train_ids
     else:
-        if corpus_type == 'valid':
-            srcs = [opt.valid_src]
-        else:
-            srcs = [opt.crosslingual_valid_src]
+        srcs = [opt.valid_src]
         tgts = [opt.valid_tgt]
         ids = [None]
 
@@ -76,9 +73,14 @@ def build_save_dataset(corpus_type, fields, src_reader, tgt_reader, opt):
                 src_vocab = None
 
             if opt.tgt_vocab != "":
-                tgt_vocab, tgt_vocab_size = _load_vocab(
-                    opt.tgt_vocab, "tgt", counters,
-                    opt.tgt_words_min_frequency)
+                if opt.force_tgt_vocab:
+                    logger.info("Forcing to use existing vocabulary...")
+                    saved_vocab = torch.load(opt.tgt_vocab)
+                    existing_fields['tgt'] = saved_vocab['tgt']
+                else:
+                    tgt_vocab, tgt_vocab_size = _load_vocab(
+                        opt.tgt_vocab, "tgt", counters,
+                        opt.tgt_words_min_frequency)
             else:
                 tgt_vocab = None
 
@@ -206,9 +208,6 @@ def main(opt):
     if opt.valid_src and opt.valid_tgt:
         logger.info("Building & saving validation data...")
         build_save_dataset('valid', fields, src_reader, tgt_reader, opt)
-    if opt.crosslingual_valid_src:
-        logger.info("Building & saving crosslingual validation data...")
-        build_save_dataset('cl_valid', fields, src_reader, tgt_reader, opt)
 
 
 def _get_parser():

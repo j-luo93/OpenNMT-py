@@ -479,6 +479,9 @@ def _read_vocab_file(vocab_path, tag):
     if not os.path.exists(vocab_path):
         raise RuntimeError(
             "{} vocabulary not found at {}".format(tag, vocab_path))
+    elif vocab_path.endswith('.pt'):
+        vocab = torch.load(vocab_path)
+        return vocab[tag].base_field.vocab.itos
     else:
         with codecs.open(vocab_path, 'r', 'utf-8') as f:
             return [line.strip().split()[0] for line in f if line.strip()]
@@ -615,16 +618,21 @@ class MultipleDatasetIterator(object):
     This takes a list of iterable objects (DatasetLazyIter) and their
     respective weights, and yields a batch in the wanted proportions.
     """
+
     def __init__(self,
                  train_shards,
                  fields,
                  device,
                  opt):
+        self._preprocess()
+        self._build_all_dataset_iters(train_shards, fields, opt)
+        self._postprocess(device, opt)
+
+    def _preprocess(self):
         self.index = -1
         self.iterables = []
-        for shard in train_shards:
-            self.iterables.append(
-                build_dataset_iter(shard, fields, opt, multi=True))
+
+    def _postprocess(self, device, opt):
         self.init_iterators = True
         self.weights = opt.data_weights
         self.batch_size = opt.batch_size
@@ -638,6 +646,11 @@ class MultipleDatasetIterator(object):
         self.random_shuffler = RandomShuffler()
         self.pool_factor = opt.pool_factor
         del temp_dataset
+
+    def _build_all_dataset_iters(self, train_shards, fields, opt):
+        for shard in train_shards:
+            self.iterables.append(
+                build_dataset_iter(shard, fields, opt, multi=True))
 
     def _iter_datasets(self):
         if self.init_iterators:
@@ -666,6 +679,24 @@ class MultipleDatasetIterator(object):
                 yield torchtext.data.Batch(minibatch,
                                            self.iterables[0].dataset,
                                            self.device)
+
+
+class CrosslingualDatasetIter(MultipleDatasetIterator):
+
+    def __init__(self,
+                 fields_info,
+                 device,
+                 opt):
+        self._preprocess()
+        self._build_all_dataset_iters(fields_info, opt)
+        self._postprocess(device, opt)
+
+    def _build_all_dataset_iters(self, fields_info, opt):
+        if not isinstance(fields_info, dict):
+            raise TypeError(f'Expecting "fields_info" of type dict, but got "{type(fields_info)}".')
+        for name, fields in fields_info.items():
+            dataset_iter = build_dataset_iter(name, fields, opt, multi=True)
+            self.iterables.append(dataset_iter)
 
 
 class DatasetLazyIter(object):
@@ -731,7 +762,6 @@ class DatasetLazyIter(object):
         if self.is_train and self.repeat:
             # Cycle through the shards indefinitely.
             paths = cycle(paths)
-        # FIXME need to add random sampling of datasets here.
         for path in paths:
             for batch in self._iter_dataset(path):
                 yield batch
@@ -808,6 +838,11 @@ def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False):
         repeat=not opt.single_pass,
         num_batches_multiple=max(opt.accum_count) * opt.world_size,
         yield_raw_example=multi)
+
+
+def build_crosslingual_dataset_iter(fields_info, opt):
+    return CrosslingualDatasetIter(
+        fields_info, "cuda" if opt.gpu_ranks else "cpu", opt)
 
 
 def build_dataset_iter_multiple(train_shards, fields, opt):

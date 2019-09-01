@@ -12,7 +12,7 @@ from onmt.utils.logging import init_logger, logger
 from onmt.train_single import main as single_main
 from onmt.utils.parse import ArgumentParser
 from onmt.inputters.inputter import build_dataset_iter, \
-    load_old_vocab, old_style_vocab, build_dataset_iter_multiple
+    load_old_vocab, old_style_vocab, build_dataset_iter_multiple, build_crosslingual_dataset_iter
 
 from itertools import cycle
 
@@ -29,18 +29,30 @@ def main(opt):
                                 map_location=lambda storage, loc: storage)
         logger.info('Loading vocab from checkpoint at %s.' % opt.train_from)
         vocab = checkpoint['vocab']
+        if opt.crosslingual:
+            cl_vocab = checkpoint['cl_vocab']  # FIXME save this somewhere
+    elif opt.crosslingual:
+        vocab = torch.load(opt.data + '.vocab.pt')
+        cl_vocab = torch.load(opt.data + '.cl_vocab.pt')
     else:
         vocab = torch.load(opt.data + '.vocab.pt')
 
     # check for code where vocab is saved instead of fields
     # (in the future this will be done in a smarter way)
-    if old_style_vocab(vocab):
-        fields = load_old_vocab(
-            vocab, opt.model_type, dynamic_dict=opt.copy_attn)
-    else:
-        fields = vocab
+    def get_fields(vocab):
+        if old_style_vocab(vocab):
+            return load_old_vocab(
+                vocab, opt.model_type, dynamic_dict=opt.copy_attn)
+        else:
+            return vocab
+    fields = get_fields(vocab)
+    if opt.crosslingual:
+        cl_fields = get_fields(vocab)
 
-    if len(opt.data_ids) > 1:
+    if opt.crosslingual:
+        fields_info = {'train': fields, 'cl_train': cl_fields}
+        train_iter = build_crosslingual_dataset_iter(fields_info, opt)
+    elif len(opt.data_ids) > 1:
         train_shards = []
         for train_id in opt.data_ids:
             shard_base = "train_" + train_id
