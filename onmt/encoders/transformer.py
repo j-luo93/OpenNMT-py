@@ -199,7 +199,7 @@ class TransformerXEncoder(nn.Module):
         super().__init__()
         cls = TransformerEncoder if mode == 'base' else TransformerEatEncoder
         self.encoder = cls(*args)
-        self._crosslingual = False
+        self._crosslingual = False  # FIXME you need another embedding right?
 
     def crosslingual_on(self):
         self._crosslingual = True

@@ -659,15 +659,19 @@ class MultipleDatasetIterator(object):
         for weight in self.weights:
             self.index = (self.index + 1) % len(self.iterators)
             for i in range(weight):
-                yield self.iterators[self.index]
+                yield self.iterators[self.index], self.index
 
     def _iter_examples(self):
-        for iterator in cycle(self._iter_datasets()):
+        for iterator, index in cycle(self._iter_datasets()):
             yield next(iterator)
+
+    def _get_minibatch(self, new, old):
+        return new, None
 
     def __iter__(self):
         while True:
-            for minibatch in _pool(
+            old_minibatch = None
+            for new_minibatch in _pool(
                     self._iter_examples(),
                     self.batch_size,
                     self.batch_size_fn,
@@ -675,7 +679,8 @@ class MultipleDatasetIterator(object):
                     self.sort_key,
                     self.random_shuffler,
                     self.pool_factor):
-                minibatch = sorted(minibatch, key=self.sort_key, reverse=True)
+                new_minibatch = sorted(new_minibatch, key=self.sort_key, reverse=True)
+                minibatch, old_minibatch = self._get_minibatch(new_minibatch, old_minibatch)
                 yield torchtext.data.Batch(minibatch,
                                            self.iterables[0].dataset,
                                            self.device)
@@ -691,12 +696,48 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
         self._build_all_dataset_iters(fields_info, opt)
         self._postprocess(device, opt)
 
+        # NOTE Override the sort_key so that it sorts the examples by source (crosslingual or not) first.
+        old_sort_key = self.sort_key
+
+        def sort_key_source(ex):
+            old_key = old_sort_key(ex)
+            if isinstance(old_key, tuple):
+                return (ex.crosslingual, ) + old_key
+            else:
+                return (ex.crosslingual, old_key)
+        self.sort_key = sort_key_source
+
     def _build_all_dataset_iters(self, fields_info, opt):
-        if not isinstance(fields_info, dict):
-            raise TypeError(f'Expecting "fields_info" of type dict, but got "{type(fields_info)}".')
-        for name, fields in fields_info.items():
-            dataset_iter = build_dataset_iter(name, fields, opt, multi=True)
+        if not isinstance(fields_info, list):
+            raise TypeError(f'Expecting "fields_info" of type list, but got "{type(fields_info)}".')
+
+        for name, fields, data_attr in fields_info:
+            dataset_iter = build_dataset_iter(name, fields, opt, multi=True, data_attr=data_attr)
             self.iterables.append(dataset_iter)
+
+    def _iter_examples(self):
+        for iterator, index in cycle(self._iter_datasets()):
+            batch = next(iterator)
+            if index > 1:
+                raise RuntimeError(f'Should have at most 2 datasets, but got index "{index}"')
+            batch.crosslingual = index == 1
+            yield batch
+
+    def _get_minibatch(self, new, old):
+        # Truncate the minibatch so that within the same batch, all examples come from the same dataset (crosslingual or not).
+        if old is None:
+            all_ex = new
+        else:
+            all_ex = old + new
+        cl_flags = [ex.crosslingual for ex in all_ex]
+        try:
+            idx = cl_flags.index(not cl_flags[0])
+            new = all_ex[:idx]
+            old = all_ex[idx:]
+        except ValueError:
+            new = all_ex
+            old = None
+        return new, old
 
 
 class DatasetLazyIter(object):
@@ -801,14 +842,14 @@ def max_tok_len(new, count, sofar):
     return max(src_elements, tgt_elements)
 
 
-def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False):
+def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data'):
     """
     This returns user-defined train/validate data iterator for the trainer
     to iterate over. We implement simple ordered iterator strategy here,
     but more sophisticated strategy like curriculum learning is ok too.
     """
     dataset_paths = list(sorted(
-        glob.glob(opt.data + '.' + corpus_type + '.[0-9]*.pt')))
+        glob.glob(getattr(opt, data_attr) + '.' + corpus_type + '.[0-9]*.pt')))
     if not dataset_paths:
         if is_train:
             raise ValueError('Training data %s not found' % opt.data)

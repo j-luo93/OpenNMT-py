@@ -17,7 +17,7 @@ class NMTModel(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
 
-    def forward(self, src, tgt, lengths, bptt=False):
+    def forward(self, src, tgt, lengths, bptt=False, crosslingual=False):
         """Forward propagate a `src` and `tgt` pair for training.
         Possible initialized with a beginning decoder state.
 
@@ -38,6 +38,13 @@ class NMTModel(nn.Module):
             * dictionary attention dists of ``(tgt_len, batch, src_len)``
         """
         tgt = tgt[:-1]  # exclude last target from inputs
+
+        try:
+            call_func = 'crosslingual_on' if crosslingual else 'crosslingual_off'
+            switch = getattr(self.encoder, call_func)
+            switch()
+        except AttributeError:
+            pass
 
         enc_state, memory_bank, lengths = self.encoder(src, lengths)
 

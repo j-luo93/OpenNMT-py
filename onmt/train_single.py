@@ -39,7 +39,7 @@ def configure_process(opt, device_id):
     set_random_seed(opt.seed, device_id >= 0)
 
 
-def main(opt, device_id, batch_queue=None, semaphore=None):
+def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, passed_fields=None):
     # NOTE: It's important that ``opt`` has been validated and updated
     # at this point.
     configure_process(opt, device_id)
@@ -63,7 +63,9 @@ def main(opt, device_id, batch_queue=None, semaphore=None):
 
     # check for code where vocab is saved instead of fields
     # (in the future this will be done in a smarter way)
-    if old_style_vocab(vocab):
+    if passed_fields is not None:
+        fields = passed_fields['main']
+    elif old_style_vocab(vocab):
         fields = load_old_vocab(
             vocab, opt.model_type, dynamic_dict=opt.copy_attn)
     else:
@@ -97,7 +99,9 @@ def main(opt, device_id, batch_queue=None, semaphore=None):
     trainer = build_trainer(
         opt, device_id, model, fields, optim, model_saver=model_saver)
 
-    if batch_queue is None:
+    if train_iter is not None:
+        pass  # NOTE Use the passed one.
+    elif batch_queue is None:
         if len(opt.data_ids) > 1:
             train_shards = []
             for train_id in opt.data_ids:

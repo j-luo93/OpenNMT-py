@@ -21,6 +21,7 @@ def model_opts(parser):
     parser.add('--crosslingual', '-cl', action='store_true',
                help='Use crosslingual mode.')
 
+
     # Embedding Options
     group = parser.add_argument_group('Model-Embeddings')
     group.add('--src_word_vec_size', '-src_word_vec_size',
@@ -324,6 +325,10 @@ def train_opts(parser):
     group.add('--data', '-data', required=True,
               help='Path prefix to the ".train.pt" and '
                    '".valid.pt" file path from preprocess.py')
+
+    group.add('--crosslingual_train_data', '-ctd')
+    group.add('--crosslingual_dev_data', '-cdd') # FIXME multiple dev?
+
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],
               help="In case there are several corpora.")

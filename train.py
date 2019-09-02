@@ -23,6 +23,7 @@ def main(opt):
     ArgumentParser.validate_model_opts(opt)
 
     # Load checkpoint if we resume from a previous training.
+    cl_vocab = None
     if opt.train_from:
         logger.info('Loading checkpoint from %s' % opt.train_from)
         checkpoint = torch.load(opt.train_from,
@@ -33,7 +34,7 @@ def main(opt):
             cl_vocab = checkpoint['cl_vocab']  # FIXME save this somewhere
     elif opt.crosslingual:
         vocab = torch.load(opt.data + '.vocab.pt')
-        cl_vocab = torch.load(opt.data + '.cl_vocab.pt')
+        cl_vocab = torch.load(opt.crosslingual_train_data + '.vocab.pt')
     else:
         vocab = torch.load(opt.data + '.vocab.pt')
 
@@ -46,11 +47,12 @@ def main(opt):
         else:
             return vocab
     fields = get_fields(vocab)
+    cl_fields = None
     if opt.crosslingual:
         cl_fields = get_fields(vocab)
 
     if opt.crosslingual:
-        fields_info = {'train': fields, 'cl_train': cl_fields}
+        fields_info = [('train', fields, 'data'), ('train', cl_fields, 'crosslingual_train_data')]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []
@@ -94,10 +96,12 @@ def main(opt):
             p.join()
         producer.terminate()
 
-    elif nb_gpu == 1:  # case 1 GPU only
-        single_main(opt, 0)
-    else:   # case only CPU
-        single_main(opt, -1)
+    else:
+        device_id = 0 if nb_gpu == 1 else -1
+        # NOTE Only pass train_iter in my crosslingual mode.
+        train_iter = train_iter if opt.crosslingual else None
+        passed_fields = {'main': fields, 'crosslingual': cl_fields} if opt.crosslingual else None
+        single_main(opt, device_id, train_iter=train_iter, passed_fields=passed_fields)
 
 
 def batch_producer(generator_to_serve, queues, semaphore, opt):
