@@ -194,12 +194,26 @@ class TransformerEatEncoder(TransformerEncoder):
 
 class TransformerXEncoder(nn.Module):
 
-    def __init__(self, *args, mode='base'):
-        assert mode in ['base', 'eat']
+    def __init__(self, *args, mode='base', encoder=None):
         super().__init__()
-        cls = TransformerEncoder if mode == 'base' else TransformerEatEncoder
-        self.encoder = cls(*args)
+        if encoder is None:
+            cls = self._get_cls(mode)
+            self.encoder = cls(*args)
+        else:
+            self.encoder = encoder
         self._crosslingual = False  # FIXME you need another embedding right?
+
+    @classmethod
+    def _get_cls(self, mode):
+        assert mode in ['base', 'eat']
+        cls = TransformerEncoder if mode == 'base' else TransformerEatEncoder
+        return cls
+
+    @classmethod
+    def from_opt(cls, opt, embeddings, mode='base'):
+        enc_cls = cls._get_cls(mode)
+        encoder = enc_cls.from_opt(opt, embeddings)
+        return cls(encoder=encoder)
 
     def crosslingual_on(self):
         self._crosslingual = True

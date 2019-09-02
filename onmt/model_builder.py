@@ -13,6 +13,7 @@ from onmt.encoders import str2enc
 
 from onmt.decoders import str2dec
 
+from onmt.encoders.transformer import TransformerXEncoder
 from onmt.modules import Embeddings, XEmbeddings, VecEmbedding, CopyGenerator
 from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
@@ -72,9 +73,13 @@ def build_encoder(opt, embeddings):
         opt: the option in current environment.
         embeddings (Embeddings): vocab embeddings for this encoder.
     """
-    enc_type = opt.encoder_type if opt.model_type == "text" \
-        or opt.model_type == "vec" else opt.model_type
-    return str2enc[enc_type].from_opt(opt, embeddings)
+    if opt.crosslingual:
+        cls = TransformerXEncoder
+    else:
+        enc_type = opt.encoder_type if opt.model_type == "text" \
+            or opt.model_type == "vec" else opt.model_type
+        cls = str2enc[enc_type]
+    return cls.from_opt(opt, embeddings)
 
 
 def build_decoder(opt, embeddings):

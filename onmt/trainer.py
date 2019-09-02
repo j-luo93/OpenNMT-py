@@ -253,12 +253,12 @@ class Trainer(object):
 
             if valid_iter is not None and step % valid_steps == 0:
 
-                def evaluate(dataset_iter, try_earlystop=False):
+                def evaluate(dataset_iter, try_earlystop=False, crosslingual=False):
                     if self.gpu_verbose_level > 0:
                         logger.info('GpuRank %d: validate step %d'
                                     % (self.gpu_rank, step))
                     valid_stats = self.validate(
-                        dataset_iter, moving_average=self.moving_average)
+                        dataset_iter, moving_average=self.moving_average, crosslingual=crosslingual)
                     if self.gpu_verbose_level > 0:
                         logger.info('GpuRank %d: gather valid stat \
                                     step %d' % (self.gpu_rank, step))
@@ -275,9 +275,9 @@ class Trainer(object):
                         return self.earlystopper.has_stopped()
                     return False
 
-                stopped = evaluate(valid_iter, try_earlystop=True)
+                stopped = evaluate(valid_iter, try_earlystop=True, crosslingual=False)
                 if cl_valid_iter:
-                    evaluate(cl_valid_iter, try_earlystop=False)  # Use crosslingual mode
+                    evaluate(cl_valid_iter, try_earlystop=False, crosslingual=True)  # NOTE Use crosslingual mode
                 if stopped:
                     break
 
@@ -293,7 +293,7 @@ class Trainer(object):
             self.model_saver.save(step, moving_average=self.moving_average)
         return total_stats
 
-    def validate(self, valid_iter, moving_average=None):
+    def validate(self, valid_iter, moving_average=None, crosslingual=False):
         """ Validate model.
             valid_iter: validate data iterator
         Returns:
@@ -319,7 +319,7 @@ class Trainer(object):
                 tgt = batch.tgt
 
                 # F-prop through the model.
-                outputs, attns = valid_model(src, tgt, src_lengths)
+                outputs, attns = valid_model(src, tgt, src_lengths, crosslingual=crosslingual)
 
                 # Compute loss.
                 _, batch_stats = self.valid_loss(batch, outputs, attns)
@@ -365,8 +365,11 @@ class Trainer(object):
                     self.optim.zero_grad()
 
                 # 2.5 Prepare for crosslingual mode if needed.
-                # breakpoint()  # DEBUG
-                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt)
+                try:
+                    crosslingual = batch.metadata['crosslingual']
+                except AttributeError or KeyError:
+                    crosslingual = False
+                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, crosslingual=crosslingual)
                 bptt = True
 
                 # 3. Compute loss.

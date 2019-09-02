@@ -327,7 +327,7 @@ def train_opts(parser):
                    '".valid.pt" file path from preprocess.py')
 
     group.add('--crosslingual_train_data', '-ctd')
-    group.add('--crosslingual_dev_data', '-cdd') # FIXME multiple dev?
+    group.add('--crosslingual_dev_data', '-cdd')
 
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],

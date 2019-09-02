@@ -43,6 +43,7 @@ class NMTModel(nn.Module):
             call_func = 'crosslingual_on' if crosslingual else 'crosslingual_off'
             switch = getattr(self.encoder, call_func)
             switch()
+            print(f'called {switch.__name__}')
         except AttributeError:
             pass
 

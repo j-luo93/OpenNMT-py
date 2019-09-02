@@ -666,7 +666,7 @@ class MultipleDatasetIterator(object):
             yield next(iterator)
 
     def _get_minibatch(self, new, old):
-        return new, None
+        return new, None, dict()
 
     def __iter__(self):
         while True:
@@ -680,10 +680,12 @@ class MultipleDatasetIterator(object):
                     self.random_shuffler,
                     self.pool_factor):
                 new_minibatch = sorted(new_minibatch, key=self.sort_key, reverse=True)
-                minibatch, old_minibatch = self._get_minibatch(new_minibatch, old_minibatch)
-                yield torchtext.data.Batch(minibatch,
+                minibatch, old_minibatch, metadata = self._get_minibatch(new_minibatch, old_minibatch)
+                batch =  torchtext.data.Batch(minibatch,
                                            self.iterables[0].dataset,
                                            self.device)
+                batch.metadata = metadata
+                yield batch
 
 
 class CrosslingualDatasetIter(MultipleDatasetIterator):
@@ -725,19 +727,20 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
 
     def _get_minibatch(self, new, old):
         # Truncate the minibatch so that within the same batch, all examples come from the same dataset (crosslingual or not).
+        max_size = len(new)
         if old is None:
             all_ex = new
         else:
-            all_ex = old + new
+            all_ex = new + old
         cl_flags = [ex.crosslingual for ex in all_ex]
         try:
             idx = cl_flags.index(not cl_flags[0])
-            new = all_ex[:idx]
-            old = all_ex[idx:]
+            idx = min(max_size, idx)
         except ValueError:
-            new = all_ex
-            old = None
-        return new, old
+            idx = max_size
+        new = all_ex[:idx]
+        old = all_ex[idx:]
+        return new, old, {'crosslingual': cl_flags[0]}
 
 
 class DatasetLazyIter(object):
