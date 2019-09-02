@@ -201,7 +201,7 @@ class TransformerXEncoder(nn.Module):
             self.encoder = cls(*args)
         else:
             self.encoder = encoder
-        self._crosslingual = False  # FIXME you need another embedding right?
+        self._crosslingual = False
 
     @classmethod
     def _get_cls(self, mode):
@@ -217,19 +217,24 @@ class TransformerXEncoder(nn.Module):
 
     def crosslingual_on(self):
         self._crosslingual = True
+        self.embeddings.crosslingual_on()
 
     def crosslingual_off(self):
         self._crosslingual = False
+        self.embeddings.crosslingual_off()
+
+    def mapping_on(self):
+        self.embeddings.mapping_on()
+
+    def mapping_off(self):
+        self.embeddings.mapping_off()
 
     def forward(self, src, lengths=None):
-        if self._crosslingual:
-            self.encoder.embeddings.mapping_on()
-        else:
-            self.encoder.embeddings.mapping_off()
         return self.encoder.forward(src, lengths=lengths)
 
     def __getattr__(self, name):
         try:
             return super().__getattr__(name)
         except AttributeError:
-            return self.encoder.__getattr__(name)
+            encoder = super().__getattr__('encoder')
+            return getattr(encoder, name)

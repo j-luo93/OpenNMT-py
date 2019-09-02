@@ -58,7 +58,7 @@ class TestTransformerEat(TestCase):
 class TestTransformerX(TestCase):
 
     def _get_encoder(self, mode):
-        x_emb = XEmbeddings(DIM, VOCAB_SIZE, 0)
+        x_emb = XEmbeddings([DIM, DIM], [VOCAB_SIZE, VOCAB_SIZE * 2], 0)
         args = [1, DIM, 5, DIM, 0.1, 0.1, x_emb, 0]
         if mode == 'eat':
             args.append(False)
@@ -77,9 +77,11 @@ class TestTransformerX(TestCase):
         lengths = (torch.randint(SEQ_LEN, (BATCH_SIZE,)) + 1) * 3
         lengths[0] = SEQ_LEN * 3
         encoder.crosslingual_off()
+        encoder.mapping_off()
         _ = encoder(src, lengths)
         mocked_almt.assert_not_called()
         encoder.crosslingual_on()
+        encoder.mapping_on()
         _ = encoder(src, lengths)
         mocked_almt.assert_called()
 

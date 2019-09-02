@@ -283,13 +283,21 @@ class Embeddings(nn.Module):
             self._modules['make_embedding'][1].dropout.p = dropout
 
 
-class XEmbeddings(Embeddings):
+class XEmbeddings(nn.Module):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        dim = self.embedding_size
+        super().__init__()
+        first_args, second_args = list(zip(*args[:2]))
+        first_args += args[2:]
+        second_args += args[2:]
+        self.embeddings = nn.ModuleDict()
+        self.embeddings['base'] = Embeddings(*first_args, **kwargs)
+        self.embeddings['crosslingual'] = Embeddings(*second_args, **kwargs)
+
+        dim = self.embeddings['base'].embedding_size
         self.almt = nn.Linear(dim, dim, bias=False)
         self._mapping = False
+        self._crosslingual = False
 
     def mapping_on(self):
         self._mapping = True
@@ -297,8 +305,27 @@ class XEmbeddings(Embeddings):
     def mapping_off(self):
         self._mapping = False
 
+    def crosslingual_on(self):
+        self._crosslingual = True
+
+    def crosslingual_off(self):
+        self._crosslingual = False
+
+    def _get_mod(self):
+        return self.embeddings['crosslingual' if self._crosslingual else 'base']
+
     def forward(self, source, step=None):
-        ret = super().forward(source, step=step)
+        mod = self._get_mod()
+        ret = mod(source, step=step)
         if self._mapping:
+            if not self._crosslingual:
+                raise RuntimeError('Should NOT use mapping in base mode.')
             return self.almt(ret)
         return ret
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            mod = super().__getattr__('_get_mod')()
+            return getattr(mod, name)
