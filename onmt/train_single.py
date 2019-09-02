@@ -129,6 +129,10 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
 
     valid_iter = build_dataset_iter(
         "valid", fields, opt, is_train=False)
+    cl_valid_iter = None
+    if opt.crosslingual:
+        # NOTE I used 'train' to prepare this in `eat_prepare.sh`, so I use 'train' here as well.
+        cl_valid_iter = build_dataset_iter('train', fields, opt, is_train=False, data_attr='crosslingual_dev_data')
 
     if len(opt.gpu_ranks):
         logger.info('Starting training on GPU: %s' % opt.gpu_ranks)
@@ -144,7 +148,8 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
         train_steps,
         save_checkpoint_steps=opt.save_checkpoint_steps,
         valid_iter=valid_iter,
-        valid_steps=opt.valid_steps)
+        valid_steps=opt.valid_steps,
+        cl_valid_iter=cl_valid_iter)
 
     if opt.tensorboard:
         trainer.report_manager.tensorboard_writer.close()

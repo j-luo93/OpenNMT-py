@@ -194,7 +194,8 @@ class Trainer(object):
               train_steps,
               save_checkpoint_steps=5000,
               valid_iter=None,
-              valid_steps=10000):
+              valid_steps=10000,
+              cl_valid_iter=None):
         """
         The main training loop by iterating over `train_iter` and possibly
         running validation on `valid_iter`.
@@ -251,26 +252,34 @@ class Trainer(object):
                 report_stats)
 
             if valid_iter is not None and step % valid_steps == 0:
-                if self.gpu_verbose_level > 0:
-                    logger.info('GpuRank %d: validate step %d'
-                                % (self.gpu_rank, step))
-                valid_stats = self.validate(
-                    valid_iter, moving_average=self.moving_average)
-                if self.gpu_verbose_level > 0:
-                    logger.info('GpuRank %d: gather valid stat \
-                                step %d' % (self.gpu_rank, step))
-                valid_stats = self._maybe_gather_stats(valid_stats)
-                if self.gpu_verbose_level > 0:
-                    logger.info('GpuRank %d: report stat step %d'
-                                % (self.gpu_rank, step))
-                self._report_step(self.optim.learning_rate(),
-                                  step, valid_stats=valid_stats)
-                # Run patience mechanism
-                if self.earlystopper is not None:
-                    self.earlystopper(valid_stats, step)
-                    # If the patience has reached the limit, stop training
-                    if self.earlystopper.has_stopped():
-                        break
+
+                def evaluate(dataset_iter, try_earlystop=False):
+                    if self.gpu_verbose_level > 0:
+                        logger.info('GpuRank %d: validate step %d'
+                                    % (self.gpu_rank, step))
+                    valid_stats = self.validate(
+                        dataset_iter, moving_average=self.moving_average)
+                    if self.gpu_verbose_level > 0:
+                        logger.info('GpuRank %d: gather valid stat \
+                                    step %d' % (self.gpu_rank, step))
+                    valid_stats = self._maybe_gather_stats(valid_stats)
+                    if self.gpu_verbose_level > 0:
+                        logger.info('GpuRank %d: report stat step %d'
+                                    % (self.gpu_rank, step))
+                    self._report_step(self.optim.learning_rate(),
+                                      step, valid_stats=valid_stats)
+                    # Run patience mechanism
+                    if self.earlystopper is not None and try_earlystop:
+                        self.earlystopper(valid_stats, step)
+                        # If the patience has reached the limit, stop training
+                        return self.earlystopper.has_stopped()
+                    return False
+
+                stopped = evaluate(valid_iter, try_earlystop=True)
+                if cl_valid_iter:
+                    evaluate(cl_valid_iter, try_earlystop=False)  # Use crosslingual mode
+                if stopped:
+                    break
 
             if (self.model_saver is not None
                 and (save_checkpoint_steps != 0
