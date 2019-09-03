@@ -53,9 +53,9 @@ def main(opt):
         aux_fields = get_fields(vocab)
 
     if opt.crosslingual:
-        # FIXME expand the second task later.
         fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base'),
-                       ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux')]
+                       ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux'),
+                       ('train', aux_fields, 'aux_train_data', Eat2PlainCrosslingualTask, 'crosslingual')]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []

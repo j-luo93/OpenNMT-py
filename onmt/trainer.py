@@ -327,7 +327,6 @@ class Trainer(object):
 
                 # F-prop through the model.
                 task = self._get_task(batch)
-                print(task)
                 outputs, attns = valid_model(src, tgt, src_lengths, task=task)
 
                 # Compute loss.

@@ -703,13 +703,13 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
         # NOTE Override the sort_key so that it sorts the examples by source (crosslingual or not) first.
         old_sort_key = self.sort_key
 
-        # FIXME change key
         def sort_key_source(ex):
             old_key = old_sort_key(ex)
+            task_name = ex.task.name
             if isinstance(old_key, tuple):
-                return (ex.crosslingual, ) + old_key
+                return (task_name, ) + old_key
             else:
-                return (ex.crosslingual, old_key)
+                return (task_name, old_key)
         self.sort_key = sort_key_source
 
     def _build_all_dataset_iters(self, fields_info, opt):
@@ -724,32 +724,26 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
     def _iter_examples(self):
         for iterator, index in cycle(self._iter_datasets()):
             batch = next(iterator)
-            if index > 1:
-                raise RuntimeError(f'Should have at most 2 datasets, but got index "{index}"')
-            batch.crosslingual = index == 1
             batch.task = self.iterables[index].task
             yield batch
 
     def _get_minibatch(self, new, old):
-        # Truncate the minibatch so that within the same batch, all examples come from the same dataset (crosslingual or not).
+        # Truncate the minibatch so that within the same batch, all examples come from the same task.
         max_size = len(new)
         if old is None:
             all_ex = new
         else:
             all_ex = new + old
-        aux_flags = [ex.crosslingual for ex in all_ex]
-        try:
-            idx = aux_flags.index(not aux_flags[0])
-            idx = min(max_size, idx)
-        except ValueError:
-            idx = max_size
+        task_names = [ex.task.name for ex in all_ex]
+        idx = 0
+        while idx < len(task_names):
+            if task_names[idx] != task_names[0]:
+                break
+            idx += 1
+        idx = min(max_size, idx)
         new = all_ex[:idx]
         old = all_ex[idx:]
-        ex = new[0]
-        # FIXME This is for later
-        #cls = Eat2PlainCrosslingualTask if ex.crosslingual else Eat2PlainMonoTask
-        task = ex.task
-        return new, old, task
+        return new, old, new[0].task
 
 
 class DatasetLazyIter(object):
@@ -767,7 +761,7 @@ class DatasetLazyIter(object):
 
     def __init__(self, dataset_paths, fields, batch_size, batch_size_fn,
                  batch_size_multiple, device, is_train, pool_factor,
-                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None, task_name=None):
+                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None, task_name='default'):
         self._paths = dataset_paths
         self.fields = fields
         self.batch_size = batch_size

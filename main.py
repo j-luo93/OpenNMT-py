@@ -30,7 +30,7 @@ if __name__ == "__main__":
         args.train_steps = 20
         args.valid_steps = 2
         args.save_checkpoint_steps = 4
-        args.pool_factor = 4
+        args.pool_factor = 12
         args.report_every = 4
 
     cmd = f'CUDA_VISIBLE_DEVICES=$gpu python -m ipdb -c continue train.py --data {args.data_prefix} --save_model {args.save_path}'

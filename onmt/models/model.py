@@ -1,6 +1,8 @@
 """ Onmt NMT Model base class definition """
 import torch.nn as nn
 
+from onmt.utils.logging import logger
+
 
 class NMTModel(nn.Module):
     """
@@ -41,7 +43,7 @@ class NMTModel(nn.Module):
 
         if task is not None:
             task.set_switches(self)
-            print(f'Running task {task}.')
+            logger.info(f'Running {task}.')
 
         enc_state, memory_bank, lengths = self.encoder(src, lengths)
 
