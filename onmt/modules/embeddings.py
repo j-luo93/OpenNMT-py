@@ -327,5 +327,5 @@ class XEmbeddings(nn.Module):
         try:
             return super().__getattr__(name)
         except AttributeError:
-            mod = super().__getattr__('_get_mod')()
+            mod = super().__getattribute__('_get_mod')()
             return getattr(mod, name)

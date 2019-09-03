@@ -194,13 +194,14 @@ class TransformerEatEncoder(TransformerEncoder):
 
 class TransformerXEncoder(nn.Module):
 
-    def __init__(self, *args, mode='base', encoder=None):
+    def __init__(self, *args, mode='base', encoders=None):
         super().__init__()
-        if encoder is None:
+        if encoders is None:
             cls = self._get_cls(mode)
-            self.encoder = cls(*args)
-        else:
-            self.encoder = encoder
+            encoders = {'base': cls(*args), 'crosslingual': cls(*args)}
+        if not isinstance(encoders, dict):
+            raise TypeError(f'Expecting a dict, but got {typpe(encoders)}')
+        self.encoders = nn.ModuleDict(encoders)
         self._crosslingual = False
 
     @classmethod
@@ -212,8 +213,11 @@ class TransformerXEncoder(nn.Module):
     @classmethod
     def from_opt(cls, opt, embeddings, mode='base'):
         enc_cls = cls._get_cls(mode)
-        encoder = enc_cls.from_opt(opt, embeddings)
-        return cls(encoder=encoder)
+        encoders = {
+            'base': enc_cls.from_opt(opt, embeddings),
+            'crosslingual': enc_cls.from_opt(opt, embeddings)
+        }
+        return cls(encoders=encoders)
 
     def crosslingual_on(self):
         self._crosslingual = True
@@ -229,12 +233,16 @@ class TransformerXEncoder(nn.Module):
     def mapping_off(self):
         self.embeddings.mapping_off()
 
+    def _get_mod(self):
+        return self.encoders['crosslingual' if self._crosslingual else 'base']
+
     def forward(self, src, lengths=None):
-        return self.encoder.forward(src, lengths=lengths)
+        mod = self._get_mod()
+        return mod(src, lengths=lengths)
 
     def __getattr__(self, name):
         try:
             return super().__getattr__(name)
         except AttributeError:
-            encoder = super().__getattr__('encoder')
-            return getattr(encoder, name)
+            mod = super().__getattribute__('_get_mod')()
+            return getattr(mod, name)
