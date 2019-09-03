@@ -60,6 +60,10 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
         if opt.early_stopping > 0 else None
 
     report_manager = onmt.utils.build_report_manager(opt)
+    crosslingual_train_loss = None
+    if opt.crosslingual:
+        crosslingual_train_loss = onmt.utils.loss.build_loss_compute(model, tgt_field, opt, crosslingual=True)
+
     trainer = onmt.Trainer(model, train_loss, valid_loss, optim, trunc_size,
                            shard_size, norm_method,
                            accum_count, accum_steps,
@@ -71,7 +75,8 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                            model_dtype=opt.model_dtype,
                            earlystopper=earlystopper,
                            dropout=dropout,
-                           dropout_steps=dropout_steps)
+                           dropout_steps=dropout_steps,
+                           crosslingual_train_loss=crosslingual_train_loss)
     return trainer
 
 
@@ -108,7 +113,7 @@ class Trainer(object):
                  n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
-                 earlystopper=None, dropout=[0.3], dropout_steps=[0]):
+                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -142,6 +147,9 @@ class Trainer(object):
 
         # Set model in training mode.
         self.model.train()
+
+        # Set crosslingual training loss.
+        self.crosslingual_train_loss = crosslingual_train_loss
 
     def _accum_count(self, step):
         for i in range(len(self.accum_steps)):
@@ -223,6 +231,8 @@ class Trainer(object):
         if isinstance(train_iter, CrosslingualDatasetIter):
             total_stats['aux'] = onmt.utils.Statistics()
             report_stats['aux'] = onmt.utils.Statistics()
+            total_stats['crosslingual'] = onmt.utils.Statistics()
+            report_stats['crosslingual'] = onmt.utils.Statistics()
         self._start_report_manager(start_time=total_stats['base'].start_time)
 
         for i, (batches, normalization) in enumerate(
@@ -284,7 +294,7 @@ class Trainer(object):
                     this_stopped = evaluate(valid_iter, try_earlystop=True)
                     stopped = stopped and this_stopped
                 if cl_valid_iter:
-                    evaluate(cl_valid_iter, try_earlystop=False)  # NOTE Use crosslingual mode
+                    evaluate(cl_valid_iter, try_earlystop=False)
                 if stopped:
                     break
 
@@ -366,9 +376,8 @@ class Trainer(object):
                 else (batch.src, None)
 
             task = self._get_task(batch)
-            stats_name = 'aux' if task.name == 'aux' else 'base'
-            r_stats = report_stats[stats_name]
-            t_stats = total_stats[stats_name]
+            r_stats = report_stats[task.name]
+            t_stats = total_stats[task.name]
             if src_lengths is not None:
                 r_stats.n_src_words += src_lengths.sum().item()
 
@@ -387,9 +396,11 @@ class Trainer(object):
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, task=task)
                 bptt = True
 
+                # 2.9 Get appropriate loss function.
+                loss_func = self.crosslingual_train_loss if task.name == 'crosslingual' else self.train_loss
                 # 3. Compute loss.
                 try:
-                    loss, batch_stats = self.train_loss(
+                    loss, batch_stats = loss_func(
                         batch,
                         outputs,
                         attns,

@@ -12,7 +12,7 @@ from onmt.modules.sparse_losses import SparsemaxLoss
 from onmt.modules.sparse_activations import LogSparsemax
 
 
-def build_loss_compute(model, tgt_field, opt, train=True):
+def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=False):
     """
     Returns a LossCompute subclass which wraps around an nn.Module subclass
     (such as nn.NLLLoss) which defines the loss criterion. The LossCompute
@@ -30,7 +30,9 @@ def build_loss_compute(model, tgt_field, opt, train=True):
         assert opt.coverage_attn, "--coverage_attn needs to be set in " \
             "order to use --lambda_coverage != 0"
 
-    if opt.copy_attn:
+    if crosslingual:
+        criterion = BestExampleLoss(ignore_index=padding_idx)
+    elif opt.copy_attn:
         criterion = onmt.modules.CopyGeneratorLoss(
             len(tgt_field.vocab), opt.copy_attn_force,
             unk_index=unk_idx, ignore_index=padding_idx
@@ -190,12 +192,24 @@ class LossComputeBase(nn.Module):
         return _v.view(-1, batch_size, _v.size(1))
 
 
+class BestExampleLoss(nn.Module):
+
+    def __init__(self, ignore_index):
+        super().__init__()
+        self.ignore_index = ignore_index
+
+    def forward(self, output, target):
+        """Note that `target` is ignored."""
+        return -output.max(dim=-1)[0].sum()
+
+
 class LabelSmoothingLoss(nn.Module):
     """
     With label smoothing,
     KL-divergence between q_{smoothed ground truth prob.}(w)
     and p_{prob. computed by model}(w) is minimized.
     """
+
     def __init__(self, label_smoothing, tgt_vocab_size, ignore_index=-100):
         assert 0.0 < label_smoothing <= 1.0
         self.ignore_index = ignore_index
