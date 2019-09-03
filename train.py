@@ -9,7 +9,7 @@ import onmt.utils.distributed
 
 from onmt.utils.misc import set_random_seed
 from onmt.utils.logging import init_logger, logger
-from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask
+from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask, Eat2PlainAuxMonoTask
 from onmt.train_single import main as single_main
 from onmt.utils.parse import ArgumentParser
 from onmt.inputters.inputter import build_dataset_iter, \
@@ -55,7 +55,7 @@ def main(opt):
     if opt.crosslingual:
         # FIXME expand the second task later.
         fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base'),
-                       ('train', aux_fields, 'aux_train_data', Eat2PlainMonoTask, 'aux')]
+                       ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux')]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []

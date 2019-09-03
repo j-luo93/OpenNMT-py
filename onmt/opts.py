@@ -325,7 +325,7 @@ def train_opts(parser):
               help='Path prefix to the ".train.pt" and '
                    '".valid.pt" file path from preprocess.py')
 
-    group.add('--aux_train_data', '-ctd')
+    group.add('--aux_train_data', '-atd')
     group.add('--crosslingual_dev_data', '-cdd')
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],

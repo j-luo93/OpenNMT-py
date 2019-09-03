@@ -89,6 +89,14 @@ class Eat2PlainMonoTask(Task):
         model.encoder.embeddings.switch('almt', False)
 
 
+class Eat2PlainAuxMonoTask(Eat2PlainMonoTask):
+
+    def set_switches(self, model):
+        model.encoder.switch('encoder', True)
+        model.encoder.embeddings.switch('embedding', True)
+        model.encoder.embeddings.switch('almt', False)
+
+
 class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
 
     def set_switches(self, model):

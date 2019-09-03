@@ -52,7 +52,7 @@ class ReportMgrBase(object):
         logger.info(*args, **kwargs)
 
     def report_training(self, step, num_steps, learning_rate,
-                        report_stats, multigpu=False):
+                        report_stats, multigpu=False, task_name=None):
         """
         This is the user-defined batch-level traing progress
         report function.
@@ -73,6 +73,8 @@ class ReportMgrBase(object):
             if multigpu:
                 report_stats = \
                     onmt.utils.Statistics.all_gather_stats(report_stats)
+            if task_name is not None:
+                logger.info(f'Task name {task_name}:')
             self._report_training(
                 step, num_steps, learning_rate, report_stats)
             self.progress_step += 1

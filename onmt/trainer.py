@@ -473,10 +473,9 @@ class Trainer(object):
         ret = dict()
         if self.report_manager is not None:
             for k, stats in report_stats.items():
-                logger.info(f'Task name {k}:')
                 ret[k] = self.report_manager.report_training(
                     step, num_steps, learning_rate, stats,
-                    multigpu=self.n_gpu > 1)
+                    multigpu=self.n_gpu > 1, task_name=k)
         return ret
 
     def _report_step(self, learning_rate, step, train_stats=None,
