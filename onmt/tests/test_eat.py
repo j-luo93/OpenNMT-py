@@ -3,7 +3,10 @@ from unittest.mock import Mock
 
 import torch
 import torch.nn as nn
-from onmt.encoders.transformer import TransformerEatEncoder, TransformerXEncoder
+
+from onmt.encoders.transformer import (TransformerEatEncoder,
+                                       TransformerXEncoder)
+from onmt.modules.crosslingual import SwitchableModule
 from onmt.modules.eat_layer import EatLayer
 from onmt.modules.embeddings import Embeddings, XEmbeddings
 
@@ -90,3 +93,34 @@ class TestTransformerX(TestCase):
 
     def test_eat(self):
         self._test_routine('eat')
+
+
+class TestSwitchableModule(TestCase):
+
+    def setUp(self):
+
+        class Test(nn.Module, SwitchableModule):
+
+            def __init__(self):
+                super().__init__()
+                self.mod_dict = nn.ModuleDict()
+                self.mod_dict['base'] = nn.Linear(DIM, 20)
+                self.mod_dict['crosslingual'] = nn.Linear(DIM, 30)
+
+            def forward(self, inp):
+                mod = self.get_module('switch')
+                return mod(inp)
+
+        self.mod = Test()
+        self.mod.add_switch('switch', self.mod.mod_dict, 'crosslingual', 'base')
+
+    def test_get_module(self):
+        inp = torch.randn(BATCH_SIZE, DIM)
+        # Test switch on.
+        self.mod.switch('switch', True)
+        out = self.mod(inp)
+        self.assertTupleEqual(out.shape, (BATCH_SIZE, 30))
+        # Test switch off.
+        self.mod.switch('switch', False)
+        out = self.mod(inp)
+        self.assertTupleEqual(out.shape, (BATCH_SIZE, 20))
