@@ -15,6 +15,7 @@ import traceback
 
 import onmt.utils
 from onmt.utils.logging import logger
+from onmt.inputters.inputter import CrosslingualDatasetIter
 
 
 def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
@@ -217,9 +218,12 @@ class Trainer(object):
             logger.info('Start training loop and validate every %d steps...',
                         valid_steps)
 
-        total_stats = onmt.utils.Statistics()
-        report_stats = onmt.utils.Statistics()
-        self._start_report_manager(start_time=total_stats.start_time)
+        total_stats = {'base': onmt.utils.Statistics()}
+        report_stats = {'base': onmt.utils.Statistics()}
+        if isinstance(train_iter, CrosslingualDatasetIter):
+            total_stats['aux'] = onmt.utils.Statistics()
+            report_stats['aux'] = onmt.utils.Statistics()
+        self._start_report_manager(start_time=total_stats['base'].start_time)
 
         for i, (batches, normalization) in enumerate(
                 self._accum_batches(train_iter)):
@@ -361,8 +365,13 @@ class Trainer(object):
 
             src, src_lengths = batch.src if isinstance(batch.src, tuple) \
                 else (batch.src, None)
+
+            task = self._get_task(batch)
+            stats_name = 'aux' if task.name == 'aux' else 'base'
+            r_stats = report_stats[stats_name]
+            t_stats = total_stats[stats_name]
             if src_lengths is not None:
-                report_stats.n_src_words += src_lengths.sum().item()
+                r_stats.n_src_words += src_lengths.sum().item()
 
             tgt_outer = batch.tgt
 
@@ -376,7 +385,6 @@ class Trainer(object):
                     self.optim.zero_grad()
 
                 # 2.5 Prepare for crosslingual mode if needed.
-                task = self._get_task(batch)
                 outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, task=task)
                 bptt = True
 
@@ -394,8 +402,8 @@ class Trainer(object):
                     if loss is not None:
                         self.optim.backward(loss)
 
-                    total_stats.update(batch_stats)
-                    report_stats.update(batch_stats)
+                    t_stats.update(batch_stats)
+                    r_stats.update(batch_stats)
 
                 except Exception:
                     traceback.print_exc()
@@ -462,10 +470,14 @@ class Trainer(object):
         Simple function to report training stats (if report_manager is set)
         see `onmt.utils.ReportManagerBase.report_training` for doc
         """
+        ret = dict()
         if self.report_manager is not None:
-            return self.report_manager.report_training(
-                step, num_steps, learning_rate, report_stats,
-                multigpu=self.n_gpu > 1)
+            for k, stats in report_stats.items():
+                logger.info(f'Task name {k}:')
+                ret[k] = self.report_manager.report_training(
+                    step, num_steps, learning_rate, stats,
+                    multigpu=self.n_gpu > 1)
+        return ret
 
     def _report_step(self, learning_rate, step, train_stats=None,
                      valid_stats=None):

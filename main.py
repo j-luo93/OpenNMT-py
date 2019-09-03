@@ -15,6 +15,7 @@ if __name__ == "__main__":
     parser.add_argument('--valid_steps', default=1000, type=int)
     parser.add_argument('--save_checkpoint_steps', default=1000, type=int)
     parser.add_argument('--pool_factor', type=int)
+    parser.add_argument('--report_every', type=int)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--options', type=str)
 
@@ -30,6 +31,7 @@ if __name__ == "__main__":
         args.valid_steps = 2
         args.save_checkpoint_steps = 4
         args.pool_factor = 4
+        args.report_every = 4
 
     cmd = f'CUDA_VISIBLE_DEVICES=$gpu python -m ipdb -c continue train.py --data {args.data_prefix} --save_model {args.save_path}'
     cmd += f' --layers {args.layers}'
@@ -47,6 +49,9 @@ if __name__ == "__main__":
 
     if args.pool_factor:
         cmd += f' --pool_factor {args.pool_factor}'
+
+    if args.report_every:
+        cmd += f' --report_every {args.report_every}'
 
     if args.options:
         cmd += f' {args.options}'
