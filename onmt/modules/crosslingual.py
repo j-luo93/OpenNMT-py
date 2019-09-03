@@ -1,3 +1,5 @@
+from abc import ABC, abstractmethod
+
 import torch.nn as nn
 
 
@@ -50,3 +52,45 @@ class SwitchableModule:
 
         switch = self._switches[name]
         switch['switch_value'] = flag
+
+
+class Task(ABC):
+
+    def _check_format(self, format):
+        if format not in ['eat', 'plain']:
+            raise ValueError(f'Format "{format}" not supported.')
+
+    def __init__(self, data_path, src_format, tgt_format):
+        self._check_format(src_format)
+        self._check_format(tgt_format)
+
+        self.data_path = data_path
+        self.src_format = src_format
+        self.tgt_format = tgt_format
+
+    @abstractmethod
+    def set_switches(self, model):
+        pass
+
+    def __repr__(self):
+        cls_name = type(self).__name__
+        return f'{cls_name}(data_path="{self.data_path}")'
+
+
+class Eat2PlainMonoTask(Task):
+
+    def __init__(self, data_path):
+        super().__init__(data_path, 'eat', 'plain')
+
+    def set_switches(self, model):
+        model.encoder.switch('encoder', False)
+        model.encoder.embeddings.switch('embedding', False)
+        model.encoder.embeddings.switch('almt', False)
+
+
+class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
+
+    def set_switches(self, model):
+        model.encoder.switch('encoder', True)
+        model.encoder.embeddings.switch('embedding', True)
+        model.encoder.embeddings.switch('almt', True)

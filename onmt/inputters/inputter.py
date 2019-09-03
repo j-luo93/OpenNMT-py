@@ -526,10 +526,12 @@ def batch_iter(data, batch_size, batch_size_fn=None, batch_size_multiple=1):
 
 
 def _pool(data, batch_size, batch_size_fn, batch_size_multiple,
-          sort_key, random_shuffler, pool_factor):
+          sort_key, random_shuffler, pool_factor, crosslingual=False):
     for p in torchtext.data.batch(
             data, batch_size * pool_factor,
             batch_size_fn=batch_size_fn):
+        # NOTE In crosslingual mode, expand every crosslingual example to two: one for
+        # FIXME
         p_batch = list(batch_iter(
             sorted(p, key=sort_key),
             batch_size,
@@ -666,7 +668,7 @@ class MultipleDatasetIterator(object):
             yield next(iterator)
 
     def _get_minibatch(self, new, old):
-        return new, None, dict()
+        return new, None, None
 
     def __iter__(self):
         while True:
@@ -680,11 +682,11 @@ class MultipleDatasetIterator(object):
                     self.random_shuffler,
                     self.pool_factor):
                 new_minibatch = sorted(new_minibatch, key=self.sort_key, reverse=True)
-                minibatch, old_minibatch, metadata = self._get_minibatch(new_minibatch, old_minibatch)
-                batch =  torchtext.data.Batch(minibatch,
-                                           self.iterables[0].dataset,
-                                           self.device)
-                batch.metadata = metadata
+                minibatch, old_minibatch, task = self._get_minibatch(new_minibatch, old_minibatch)
+                batch = torchtext.data.Batch(minibatch,
+                                             self.iterables[0].dataset,
+                                             self.device)
+                batch.task = task
                 yield batch
 
 
@@ -701,6 +703,7 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
         # NOTE Override the sort_key so that it sorts the examples by source (crosslingual or not) first.
         old_sort_key = self.sort_key
 
+        # FIXME change key
         def sort_key_source(ex):
             old_key = old_sort_key(ex)
             if isinstance(old_key, tuple):
@@ -709,12 +712,13 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
                 return (ex.crosslingual, old_key)
         self.sort_key = sort_key_source
 
+
     def _build_all_dataset_iters(self, fields_info, opt):
         if not isinstance(fields_info, list):
             raise TypeError(f'Expecting "fields_info" of type list, but got "{type(fields_info)}".')
 
-        for name, fields, data_attr in fields_info:
-            dataset_iter = build_dataset_iter(name, fields, opt, multi=True, data_attr=data_attr)
+        for name, fields, data_attr, task_cls in fields_info:
+            dataset_iter = build_dataset_iter(name, fields, opt, multi=True, data_attr=data_attr, task_cls=task_cls)
             self.iterables.append(dataset_iter)
 
     def _iter_examples(self):
@@ -723,6 +727,7 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
             if index > 1:
                 raise RuntimeError(f'Should have at most 2 datasets, but got index "{index}"')
             batch.crosslingual = index == 1
+            batch.task = self.iterables[index].task
             yield batch
 
     def _get_minibatch(self, new, old):
@@ -732,15 +737,19 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
             all_ex = new
         else:
             all_ex = new + old
-        cl_flags = [ex.crosslingual for ex in all_ex]
+        aux_flags = [ex.crosslingual for ex in all_ex]
         try:
-            idx = cl_flags.index(not cl_flags[0])
+            idx = aux_flags.index(not aux_flags[0])
             idx = min(max_size, idx)
         except ValueError:
             idx = max_size
         new = all_ex[:idx]
         old = all_ex[idx:]
-        return new, old, {'crosslingual': cl_flags[0]}
+        ex = new[0]
+        # FIXME This is for later
+        #cls = Eat2PlainCrosslingualTask if ex.crosslingual else Eat2PlainMonoTask
+        task = ex.task
+        return new, old, task
 
 
 class DatasetLazyIter(object):
@@ -758,7 +767,7 @@ class DatasetLazyIter(object):
 
     def __init__(self, dataset_paths, fields, batch_size, batch_size_fn,
                  batch_size_multiple, device, is_train, pool_factor,
-                 repeat=True, num_batches_multiple=1, yield_raw_example=False):
+                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None):
         self._paths = dataset_paths
         self.fields = fields
         self.batch_size = batch_size
@@ -770,6 +779,7 @@ class DatasetLazyIter(object):
         self.num_batches_multiple = num_batches_multiple
         self.yield_raw_example = yield_raw_example
         self.pool_factor = pool_factor
+        self.task = task_cls(self._paths) if task_cls is not None else None
 
     def _iter_dataset(self, path):
         logger.info('Loading dataset from %s' % path)
@@ -801,6 +811,12 @@ class DatasetLazyIter(object):
         # gc.collect()
 
     def __iter__(self):
+        for batch in self._iter_helper():
+            if self.task is not None:
+                batch.task = self.task
+            yield batch
+
+    def _iter_helper(self):
         num_batches = 0
         paths = self._paths
         if self.is_train and self.repeat:
@@ -845,7 +861,7 @@ def max_tok_len(new, count, sofar):
     return max(src_elements, tgt_elements)
 
 
-def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data'):
+def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data', task_cls=None):
     """
     This returns user-defined train/validate data iterator for the trainer
     to iterate over. We implement simple ordered iterator strategy here,
@@ -881,7 +897,8 @@ def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, dat
         opt.pool_factor,
         repeat=not opt.single_pass,
         num_batches_multiple=max(opt.accum_count) * opt.world_size,
-        yield_raw_example=multi)
+        yield_raw_example=multi,
+        task_cls=task_cls)
 
 
 def build_crosslingual_dataset_iter(fields_info, opt):

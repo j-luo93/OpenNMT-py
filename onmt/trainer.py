@@ -193,7 +193,7 @@ class Trainer(object):
               train_iter,
               train_steps,
               save_checkpoint_steps=5000,
-              valid_iter=None,
+              valid_iters=None,
               valid_steps=10000,
               cl_valid_iter=None):
         """
@@ -211,7 +211,7 @@ class Trainer(object):
         Returns:
             The gathered statistics.
         """
-        if valid_iter is None:
+        if valid_iters is None:
             logger.info('Start training loop without validation...')
         else:
             logger.info('Start training loop and validate every %d steps...',
@@ -251,14 +251,14 @@ class Trainer(object):
                 self.optim.learning_rate(),
                 report_stats)
 
-            if valid_iter is not None and step % valid_steps == 0:
+            if valid_iters is not None and step % valid_steps == 0:
 
-                def evaluate(dataset_iter, try_earlystop=False, crosslingual=False):
+                def evaluate(dataset_iter, try_earlystop=False):
                     if self.gpu_verbose_level > 0:
                         logger.info('GpuRank %d: validate step %d'
                                     % (self.gpu_rank, step))
                     valid_stats = self.validate(
-                        dataset_iter, moving_average=self.moving_average, crosslingual=crosslingual)
+                        dataset_iter, moving_average=self.moving_average)
                     if self.gpu_verbose_level > 0:
                         logger.info('GpuRank %d: gather valid stat \
                                     step %d' % (self.gpu_rank, step))
@@ -275,9 +275,12 @@ class Trainer(object):
                         return self.earlystopper.has_stopped()
                     return False
 
-                stopped = evaluate(valid_iter, try_earlystop=True, crosslingual=False)
+                stopped = True
+                for valid_iter in valid_iters:
+                    this_stopped = evaluate(valid_iter, try_earlystop=True)
+                    stopped = stopped and this_stopped
                 if cl_valid_iter:
-                    evaluate(cl_valid_iter, try_earlystop=False, crosslingual=True)  # NOTE Use crosslingual mode
+                    evaluate(cl_valid_iter, try_earlystop=False)  # NOTE Use crosslingual mode
                 if stopped:
                     break
 
@@ -293,7 +296,7 @@ class Trainer(object):
             self.model_saver.save(step, moving_average=self.moving_average)
         return total_stats
 
-    def validate(self, valid_iter, moving_average=None, crosslingual=False):
+    def validate(self, valid_iter, moving_average=None):
         """ Validate model.
             valid_iter: validate data iterator
         Returns:
@@ -319,7 +322,9 @@ class Trainer(object):
                 tgt = batch.tgt
 
                 # F-prop through the model.
-                outputs, attns = valid_model(src, tgt, src_lengths, crosslingual=crosslingual)
+                task = self._get_task(batch)
+                print(task)
+                outputs, attns = valid_model(src, tgt, src_lengths, task=task)
 
                 # Compute loss.
                 _, batch_stats = self.valid_loss(batch, outputs, attns)
@@ -334,6 +339,12 @@ class Trainer(object):
             valid_model.train()
 
         return stats
+
+    def _get_task(self, batch):
+        try:
+            return batch.task
+        except AttributeError:
+            return None
 
     def _gradient_accumulation(self, true_batches, normalization, total_stats,
                                report_stats):
@@ -365,11 +376,8 @@ class Trainer(object):
                     self.optim.zero_grad()
 
                 # 2.5 Prepare for crosslingual mode if needed.
-                try:
-                    crosslingual = batch.metadata['crosslingual']
-                except AttributeError or KeyError:
-                    crosslingual = False
-                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, crosslingual=crosslingual)
+                task = self._get_task(batch)
+                outputs, attns = self.model(src, tgt, src_lengths, bptt=bptt, task=task)
                 bptt = True
 
                 # 3. Compute loss.

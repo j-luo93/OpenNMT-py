@@ -9,6 +9,7 @@ import onmt.utils.distributed
 
 from onmt.utils.misc import set_random_seed
 from onmt.utils.logging import init_logger, logger
+from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask
 from onmt.train_single import main as single_main
 from onmt.utils.parse import ArgumentParser
 from onmt.inputters.inputter import build_dataset_iter, \
@@ -23,7 +24,7 @@ def main(opt):
     ArgumentParser.validate_model_opts(opt)
 
     # Load checkpoint if we resume from a previous training.
-    cl_vocab = None
+    aux_vocab = None
     if opt.train_from:
         logger.info('Loading checkpoint from %s' % opt.train_from)
         checkpoint = torch.load(opt.train_from,
@@ -31,10 +32,10 @@ def main(opt):
         logger.info('Loading vocab from checkpoint at %s.' % opt.train_from)
         vocab = checkpoint['vocab']
         if opt.crosslingual:
-            cl_vocab = checkpoint['cl_vocab']  # FIXME save this somewhere
+            aux_vocab = checkpoint['aux_vocab']  # FIXME save this somewhere
     elif opt.crosslingual:
         vocab = torch.load(opt.data + '.vocab.pt')
-        cl_vocab = torch.load(opt.crosslingual_train_data + '.vocab.pt')
+        aux_vocab = torch.load(opt.aux_train_data + '.vocab.pt')
     else:
         vocab = torch.load(opt.data + '.vocab.pt')
 
@@ -47,12 +48,14 @@ def main(opt):
         else:
             return vocab
     fields = get_fields(vocab)
-    cl_fields = None
+    aux_fields = None
     if opt.crosslingual:
-        cl_fields = get_fields(vocab)
+        aux_fields = get_fields(vocab)
 
     if opt.crosslingual:
-        fields_info = [('train', fields, 'data'), ('train', cl_fields, 'crosslingual_train_data')]
+        # FIXME expand the second task later.
+        fields_info = [('train', fields, 'data', Eat2PlainMonoTask),
+                       ('train', aux_fields, 'aux_train_data', Eat2PlainMonoTask)]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []
@@ -100,7 +103,7 @@ def main(opt):
         device_id = 0 if nb_gpu == 1 else -1
         # NOTE Only pass train_iter in my crosslingual mode.
         train_iter = train_iter if opt.crosslingual else None
-        passed_fields = {'main': fields, 'crosslingual': cl_fields} if opt.crosslingual else None
+        passed_fields = {'main': fields, 'crosslingual': aux_fields} if opt.crosslingual else None
         single_main(opt, device_id, train_iter=train_iter, passed_fields=passed_fields)
 
 

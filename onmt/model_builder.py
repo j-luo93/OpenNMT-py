@@ -21,7 +21,7 @@ from onmt.utils.logging import logger
 from onmt.utils.parse import ArgumentParser
 
 
-def build_embeddings(opt, text_field, for_encoder=True, cl_field=None):
+def build_embeddings(opt, text_field, for_encoder=True, aux_field=None):
     """
     Args:
         opt: the option in current environment.
@@ -55,8 +55,8 @@ def build_embeddings(opt, text_field, for_encoder=True, cl_field=None):
     if opt.crosslingual:
         cls = XEmbeddings
         word_vec_size = [emb_dim, emb_dim]
-        cl_num_word_embeddings, _ = get_num_embs(cl_field)
-        word_vocab_size = [num_word_embeddings, cl_num_word_embeddings]
+        aux_num_word_embeddings, _ = get_num_embs(aux_field)
+        word_vocab_size = [num_word_embeddings, aux_num_word_embeddings]
     else:
         cls = Embeddings
         word_vec_size = emb_dim
@@ -132,7 +132,7 @@ def load_test_model(opt, model_path=None):
     return fields, model, model_opt
 
 
-def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, cl_fields=None):
+def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, aux_fields=None):
     """Build a model from opts.
 
     Args:
@@ -157,10 +157,10 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, cl_fi
         model_opt.attention_dropout = model_opt.dropout
 
     # Build embeddings.
-    cl_src_field = cl_fields['src'] if model_opt.crosslingual else None
+    aux_src_field = aux_fields['src'] if model_opt.crosslingual else None
     if model_opt.model_type == "text" or model_opt.model_type == "vec":
         src_field = fields["src"]
-        src_emb = build_embeddings(model_opt, src_field, cl_field=cl_src_field)
+        src_emb = build_embeddings(model_opt, src_field, aux_field=aux_src_field)
     else:
         src_emb = None
 
@@ -169,8 +169,8 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, cl_fi
 
     # Build decoder.
     tgt_field = fields["tgt"]
-    cl_tgt_field = cl_fields['tgt'] if model_opt.crosslingual else None
-    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False, cl_field=cl_tgt_field)
+    aux_tgt_field = aux_fields['tgt'] if model_opt.crosslingual else None
+    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False, aux_field=aux_tgt_field)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
@@ -254,8 +254,8 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, cl_fi
     return model
 
 
-def build_model(model_opt, opt, fields, checkpoint, cl_fields=None):
+def build_model(model_opt, opt, fields, checkpoint, aux_fields=None):
     logger.info('Building model...')
-    model = build_base_model(model_opt, fields, use_gpu(opt), checkpoint, cl_fields=cl_fields)
+    model = build_base_model(model_opt, fields, use_gpu(opt), checkpoint, aux_fields=aux_fields)
     logger.info(model)
     return model

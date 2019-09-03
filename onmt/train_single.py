@@ -6,6 +6,7 @@ import torch
 
 from onmt.inputters.inputter import build_dataset_iter, \
     load_old_vocab, old_style_vocab, build_dataset_iter_multiple
+from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask
 from onmt.model_builder import build_model
 from onmt.utils.optimizers import Optimizer
 from onmt.utils.misc import set_random_seed
@@ -63,10 +64,10 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
 
     # check for code where vocab is saved instead of fields
     # (in the future this will be done in a smarter way)
-    cl_fields = None
+    aux_fields = None
     if passed_fields is not None:
         fields = passed_fields['main']
-        cl_fields = passed_fields['crosslingual']
+        aux_fields = passed_fields['crosslingual']
     elif old_style_vocab(vocab):
         fields = load_old_vocab(
             vocab, opt.model_type, dynamic_dict=opt.copy_attn)
@@ -85,7 +86,7 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
                 logger.info(' * %s vocab size = %d' % (sn, len(sf.vocab)))
 
     # Build model.
-    model = build_model(model_opt, opt, fields, checkpoint, cl_fields=cl_fields)
+    model = build_model(model_opt, opt, fields, checkpoint, aux_fields=aux_fields)
     n_params, enc, dec = _tally_parameters(model)
     logger.info('encoder: %d' % enc)
     logger.info('decoder: %d' % dec)
@@ -129,12 +130,21 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
 
         train_iter = _train_iter()
 
-    valid_iter = build_dataset_iter(
-        "valid", fields, opt, is_train=False)
     cl_valid_iter = None
     if opt.crosslingual:
-        # NOTE I used 'train' to prepare this in `eat_prepare.sh`, so I use 'train' here as well.
-        cl_valid_iter = build_dataset_iter('train', fields, opt, is_train=False, data_attr='crosslingual_dev_data')
+        valid_iter = build_dataset_iter(
+            "valid", fields, opt, is_train=False, task_cls=Eat2PlainMonoTask)
+        if opt.crosslingual_dev_data:
+            # NOTE I used 'train' to prepare this in `eat_prepare.sh`, so I use 'train' here as well.
+            cl_valid_iter = build_dataset_iter('train', fields, opt, is_train=False,
+                                               data_attr='crosslingual_dev_data', task_cls=Eat2PlainCrosslingualTask)
+        # NOTE This is for the second eat->plain task.
+        aux_valid_iter = build_dataset_iter(
+            'valid', fields, opt, is_train=False, data_attr='aux_train_data', task_cls=Eat2PlainMonoTask)
+        valid_iters = [valid_iter, aux_valid_iter]
+    else:
+        valid_iters = [build_dataset_iter(
+            "valid", fields, opt, is_train=False)]
 
     if len(opt.gpu_ranks):
         logger.info('Starting training on GPU: %s' % opt.gpu_ranks)
@@ -149,7 +159,7 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
         train_iter,
         train_steps,
         save_checkpoint_steps=opt.save_checkpoint_steps,
-        valid_iter=valid_iter,
+        valid_iters=valid_iters,
         valid_steps=opt.valid_steps,
         cl_valid_iter=cl_valid_iter)
 
