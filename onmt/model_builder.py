@@ -21,7 +21,7 @@ from onmt.utils.logging import logger
 from onmt.utils.parse import ArgumentParser
 
 
-def build_embeddings(opt, text_field, for_encoder=True):
+def build_embeddings(opt, text_field, for_encoder=True, cl_field=None):
     """
     Args:
         opt: the option in current environment.
@@ -42,23 +42,35 @@ def build_embeddings(opt, text_field, for_encoder=True):
     pad_indices = [f.vocab.stoi[f.pad_token] for _, f in text_field]
     word_padding_idx, feat_pad_indices = pad_indices[0], pad_indices[1:]
 
-    num_embs = [len(f.vocab) for _, f in text_field]
-    num_word_embeddings, num_feat_embeddings = num_embs[0], num_embs[1:]
+    def get_num_embs(field):
+        num_embs = [len(f.vocab) for _, f in field]
+        num_word_embeddings, num_feat_embeddings = num_embs[0], num_embs[1:]
+        return num_word_embeddings, num_feat_embeddings
+
+    num_word_embeddings, num_feat_embeddings = get_num_embs(text_field)
 
     fix_word_vecs = opt.fix_word_vecs_enc if for_encoder \
         else opt.fix_word_vecs_dec
 
-    cls = XEmbeddings if opt.crosslingual else Embeddings
+    if opt.crosslingual:
+        cls = XEmbeddings
+        word_vec_size = [emb_dim, emb_dim]
+        cl_num_word_embeddings, _ = get_num_embs(cl_field)
+        word_vocab_size = [num_word_embeddings, cl_num_word_embeddings]
+    else:
+        cls = Embeddings
+        word_vec_size = emb_dim
+        word_vec_size = num_word_embeddings
     emb = cls(
-        word_vec_size=emb_dim,
+        word_vec_size,
+        word_vocab_size,
+        word_padding_idx,
         position_encoding=opt.position_encoding,
         feat_merge=opt.feat_merge,
         feat_vec_exponent=opt.feat_vec_exponent,
         feat_vec_size=opt.feat_vec_size,
         dropout=opt.dropout[0] if type(opt.dropout) is list else opt.dropout,
-        word_padding_idx=word_padding_idx,
         feat_padding_idx=feat_pad_indices,
-        word_vocab_size=num_word_embeddings,
         feat_vocab_sizes=num_feat_embeddings,
         sparse=opt.optim == "sparseadam",
         fix_word_vecs=fix_word_vecs
@@ -120,7 +132,7 @@ def load_test_model(opt, model_path=None):
     return fields, model, model_opt
 
 
-def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
+def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, cl_fields=None):
     """Build a model from opts.
 
     Args:
@@ -145,9 +157,10 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
         model_opt.attention_dropout = model_opt.dropout
 
     # Build embeddings.
+    cl_src_field = cl_fields['src'] if model_opt.crosslingual else None
     if model_opt.model_type == "text" or model_opt.model_type == "vec":
         src_field = fields["src"]
-        src_emb = build_embeddings(model_opt, src_field)
+        src_emb = build_embeddings(model_opt, src_field, cl_field=cl_src_field)
     else:
         src_emb = None
 
@@ -156,7 +169,8 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
 
     # Build decoder.
     tgt_field = fields["tgt"]
-    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False)
+    cl_tgt_field = cl_fields['tgt'] if model_opt.crosslingual else None
+    tgt_emb = build_embeddings(model_opt, tgt_field, for_encoder=False, cl_field=cl_tgt_field)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
@@ -240,8 +254,8 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None):
     return model
 
 
-def build_model(model_opt, opt, fields, checkpoint):
+def build_model(model_opt, opt, fields, checkpoint, cl_fields=None):
     logger.info('Building model...')
-    model = build_base_model(model_opt, fields, use_gpu(opt), checkpoint)
+    model = build_base_model(model_opt, fields, use_gpu(opt), checkpoint, cl_fields=cl_fields)
     logger.info(model)
     return model

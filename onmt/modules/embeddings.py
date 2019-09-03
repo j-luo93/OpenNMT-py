@@ -5,7 +5,10 @@ import warnings
 import torch
 import torch.nn as nn
 
+from onmt.utils.logging import logger
+from onmt.utils.misc import aeq
 from onmt.modules.util_class import Elementwise
+from onmt.modules.crosslingual import SwitchableModule
 
 
 class PositionalEncoding(nn.Module):
@@ -283,49 +286,58 @@ class Embeddings(nn.Module):
             self._modules['make_embedding'][1].dropout.p = dropout
 
 
-class XEmbeddings(nn.Module):
+class IdentityLayer(nn.Module):
+
+    def forward(self, inp):
+        return inp
+
+
+UNSUPPORTED = ['load_pretrained_vectors']
+SUPPORTED = ['word_padding_idx']
+
+
+class XEmbeddings(nn.Module, SwitchableModule):
 
     def __init__(self, *args, **kwargs):
         super().__init__()
         first_args, second_args = list(zip(*args[:2]))
         first_args += args[2:]
         second_args += args[2:]
-        self.embeddings = nn.ModuleDict()
-        self.embeddings['base'] = Embeddings(*first_args, **kwargs)
-        self.embeddings['crosslingual'] = Embeddings(*second_args, **kwargs)
+        self.embed_layers = nn.ModuleDict()
+        self.embed_layers['base'] = Embeddings(*first_args, **kwargs)
+        self.embed_layers['crosslingual'] = Embeddings(*second_args, **kwargs)
 
-        dim = self.embeddings['base'].embedding_size
-        self.almt = nn.Linear(dim, dim, bias=False)
-        self._mapping = False
-        self._crosslingual = False
+        dim = self.embed_layers['base'].embedding_size
+        self.almt_layers = nn.ModuleDict()
+        self.almt_layers['base'] = IdentityLayer()
+        self.almt_layers['mapping'] = nn.Linear(dim, dim, bias=False)
 
-    def mapping_on(self):
-        self._mapping = True
-
-    def mapping_off(self):
-        self._mapping = False
-
-    def crosslingual_on(self):
-        self._crosslingual = True
-
-    def crosslingual_off(self):
-        self._crosslingual = False
-
-    def _get_mod(self):
-        return self.embeddings['crosslingual' if self._crosslingual else 'base']
+        self.add_switch('embedding', self.embed_layers, 'crosslingual', 'base')
+        self.add_switch('almt', self.almt_layers, 'mapping', 'base')
 
     def forward(self, source, step=None):
-        mod = self._get_mod()
-        ret = mod(source, step=step)
-        if self._mapping:
-            if not self._crosslingual:
-                raise RuntimeError('Should NOT use mapping in base mode.')
-            return self.almt(ret)
-        return ret
+        embedding = self.get_module('embedding')
+        out = embedding(source, step=step)
+        almt = self.get_module('almt')
+        return almt(out)
 
-    def __getattr__(self, name):
+    def __getattr__(self, attr):
         try:
-            return super().__getattr__(name)
+            return super().__getattr__(attr)
         except AttributeError:
-            mod = super().__getattribute__('_get_mod')()
-            return getattr(mod, name)
+            if attr in SUPPORTED:
+                return self._get_supported_attr(attr)
+            elif attr in UNSUPPORTED:
+                logger.critical(f'attribute {attr} not supported right now, will do nothing instead.')
+
+                def dummy(*args, **kwargs):
+                    return None
+
+                return dummy
+            else:
+                raise
+
+    def _get_supported_attr(self, attr):
+        values = [getattr(layer, attr) for layer in self.embed_layers.values()]
+        aeq(values)
+        return values[0]

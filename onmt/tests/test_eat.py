@@ -70,23 +70,19 @@ class TestTransformerX(TestCase):
 
     def _test_routine(self, mode):
         encoder = self._get_encoder(mode)
-        # Replace the module forward call with a mock. Note that the original module has to be deleted first to bypass the __setattr__ check in nn.Module.
-        mocked_almt = Mock()
-        mocked_almt.side_effect = lambda x: x
-        del encoder.embeddings.almt
-        encoder.embeddings.almt = mocked_almt
 
         src = torch.randint(VOCAB_SIZE, (SEQ_LEN * 3, BATCH_SIZE, 1))
         lengths = (torch.randint(SEQ_LEN, (BATCH_SIZE,)) + 1) * 3
         lengths[0] = SEQ_LEN * 3
-        encoder.crosslingual_off()
-        encoder.mapping_off()
+        encoder.switch('encoder', False)
+        encoder.embeddings.switch('embedding', False)
+        encoder.embeddings.switch('almt', False)
         _ = encoder(src, lengths)
-        mocked_almt.assert_not_called()
-        encoder.crosslingual_on()
-        encoder.mapping_on()
+
+        encoder.switch('encoder', True)
+        encoder.embeddings.switch('embedding', True)
+        encoder.embeddings.switch('almt', True)
         _ = encoder(src, lengths)
-        mocked_almt.assert_called()
 
     def test_base(self):
         self._test_routine('base')

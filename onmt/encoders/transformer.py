@@ -6,6 +6,7 @@ import torch.nn as nn
 
 from onmt.encoders.encoder import EncoderBase
 from onmt.modules import MultiHeadedAttention
+from onmt.modules.crosslingual import SwitchableModule
 from onmt.modules.eat_layer import EatLayer
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.misc import sequence_mask
@@ -192,7 +193,7 @@ class TransformerEatEncoder(TransformerEncoder):
         return super()._get_mask(lengths // 3)
 
 
-class TransformerXEncoder(nn.Module):
+class TransformerXEncoder(nn.Module, SwitchableModule):
 
     def __init__(self, *args, mode='base', encoders=None):
         super().__init__()
@@ -200,9 +201,17 @@ class TransformerXEncoder(nn.Module):
             cls = self._get_cls(mode)
             encoders = {'base': cls(*args), 'crosslingual': cls(*args)}
         if not isinstance(encoders, dict):
-            raise TypeError(f'Expecting a dict, but got {typpe(encoders)}')
+            raise TypeError(f'Expecting a dict, but got {type(encoders)}')
         self.encoders = nn.ModuleDict(encoders)
-        self._crosslingual = False
+        self.add_switch('encoder', self.encoders, 'crosslingual', 'base')
+
+    @property
+    def embeddings(self):
+        emb1 = self.encoders['base'].embeddings
+        emb2 = self.encoders['crosslingual'].embeddings
+        if emb1 is not emb2:
+            raise RuntimeError('Both encoders should share the same embedding.')
+        return emb1
 
     @classmethod
     def _get_cls(self, mode):
@@ -219,30 +228,6 @@ class TransformerXEncoder(nn.Module):
         }
         return cls(encoders=encoders)
 
-    def crosslingual_on(self):
-        self._crosslingual = True
-        self.embeddings.crosslingual_on()
-
-    def crosslingual_off(self):
-        self._crosslingual = False
-        self.embeddings.crosslingual_off()
-
-    def mapping_on(self):
-        self.embeddings.mapping_on()
-
-    def mapping_off(self):
-        self.embeddings.mapping_off()
-
-    def _get_mod(self):
-        return self.encoders['crosslingual' if self._crosslingual else 'base']
-
     def forward(self, src, lengths=None):
-        mod = self._get_mod()
-        return mod(src, lengths=lengths)
-
-    def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            mod = super().__getattribute__('_get_mod')()
-            return getattr(mod, name)
+        encoder = self.get_module('encoder')
+        return encoder(src, lengths=lengths)

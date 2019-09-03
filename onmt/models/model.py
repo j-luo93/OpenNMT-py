@@ -40,10 +40,10 @@ class NMTModel(nn.Module):
         tgt = tgt[:-1]  # exclude last target from inputs
 
         try:
-            call_func = 'crosslingual_on' if crosslingual else 'crosslingual_off'
-            switch = getattr(self.encoder, call_func)
-            switch()
-            print(f'called {switch.__name__}')
+            self.encoder.switch('encoder', crosslingual)
+            self.encoder.embeddings.switch('embedding', crosslingual)
+            self.encoder.embeddings.switch('almt', crosslingual)
+            print(f'switched crosslingual to {crosslingual}')
         except AttributeError:
             pass
 

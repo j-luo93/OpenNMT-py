@@ -63,8 +63,10 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
 
     # check for code where vocab is saved instead of fields
     # (in the future this will be done in a smarter way)
+    cl_fields = None
     if passed_fields is not None:
         fields = passed_fields['main']
+        cl_fields = passed_fields['crosslingual']
     elif old_style_vocab(vocab):
         fields = load_old_vocab(
             vocab, opt.model_type, dynamic_dict=opt.copy_attn)
@@ -83,7 +85,7 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
                 logger.info(' * %s vocab size = %d' % (sn, len(sf.vocab)))
 
     # Build model.
-    model = build_model(model_opt, opt, fields, checkpoint)
+    model = build_model(model_opt, opt, fields, checkpoint, cl_fields=cl_fields)
     n_params, enc, dec = _tally_parameters(model)
     logger.info('encoder: %d' % enc)
     logger.info('decoder: %d' % dec)
