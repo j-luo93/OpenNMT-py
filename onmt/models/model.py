@@ -43,7 +43,7 @@ class NMTModel(nn.Module):
 
         if task is not None:
             task.set_switches(self)
-            logger.info(f'Running {task}.')
+            logger.debug(f'Running {task}.')
 
         enc_state, memory_bank, lengths = self.encoder(src, lengths)
 

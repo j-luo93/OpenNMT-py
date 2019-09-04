@@ -33,7 +33,7 @@ if __name__ == "__main__":
         args.pool_factor = 12
         args.report_every = 4
 
-    cmd = f'CUDA_VISIBLE_DEVICES=$gpu python -m ipdb -c continue train.py --data {args.data_prefix} --save_model {args.save_path}'
+    cmd = f'CUDA_VISIBLE_DEVICES={args.gpu} python -m ipdb -c continue train.py --data {args.data_prefix} --save_model {args.save_path}'
     cmd += f' --layers {args.layers}'
     cmd += f' --rnn_size {args.hidden_size} --word_vec_size {args.hidden_size}'
     cmd += f' --transformer_ff {args.transformer_ff}'
