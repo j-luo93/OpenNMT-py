@@ -8,13 +8,14 @@ from onmt.utils.logging import logger
 from copy import deepcopy
 
 
-def build_model_saver(model_opt, opt, model, fields, optim):
+def build_model_saver(model_opt, opt, model, fields, optim, aux_fields=None):
     model_saver = ModelSaver(opt.save_model,
                              model,
                              model_opt,
                              fields,
                              optim,
-                             opt.keep_checkpoint)
+                             opt.keep_checkpoint,
+                             aux_fields=aux_fields)
     return model_saver
 
 
@@ -27,7 +28,7 @@ class ModelSaverBase(object):
     """
 
     def __init__(self, base_path, model, model_opt, fields, optim,
-                 keep_checkpoint=-1):
+                 keep_checkpoint=-1, aux_fields=None):
         self.base_path = base_path
         self.model = model
         self.model_opt = model_opt
@@ -35,6 +36,7 @@ class ModelSaverBase(object):
         self.optim = optim
         self.last_saved_step = None
         self.keep_checkpoint = keep_checkpoint
+        self.aux_fields = aux_fields
         if keep_checkpoint > 0:
             self.checkpoint_queue = deque([], maxlen=keep_checkpoint)
 
@@ -112,16 +114,20 @@ class ModelSaver(ModelSaverBase):
         # NOTE: We need to trim the vocab to remove any unk tokens that
         # were not originally here.
 
-        vocab = deepcopy(self.fields)
-        for side in ["src", "tgt"]:
-            keys_to_pop = []
-            if hasattr(vocab[side], "fields"):
-                unk_token = vocab[side].fields[0][1].vocab.itos[0]
-                for key, value in vocab[side].fields[0][1].vocab.stoi.items():
-                    if value == 0 and key != unk_token:
-                        keys_to_pop.append(key)
-                for key in keys_to_pop:
-                    vocab[side].fields[0][1].vocab.stoi.pop(key, None)
+        def get_vocab(fields):
+            vocab = deepcopy(fields)
+            for side in ["src", "tgt"]:
+                keys_to_pop = []
+                if hasattr(vocab[side], "fields"):
+                    unk_token = vocab[side].fields[0][1].vocab.itos[0]
+                    for key, value in vocab[side].fields[0][1].vocab.stoi.items():
+                        if value == 0 and key != unk_token:
+                            keys_to_pop.append(key)
+                    for key in keys_to_pop:
+                        vocab[side].fields[0][1].vocab.stoi.pop(key, None)
+            return vocab
+
+        vocab = get_vocab(self.fields)
 
         checkpoint = {
             'model': model_state_dict,
@@ -130,6 +136,10 @@ class ModelSaver(ModelSaverBase):
             'opt': self.model_opt,
             'optim': self.optim.state_dict(),
         }
+
+        if self.aux_fields is not None:
+            aux_vocab = get_vocab(self.aux_fields)
+            checkpoint['aux_vocab'] = aux_vocab
 
         logger.info("Saving checkpoint %s_step_%d.pt" % (self.base_path, step))
         checkpoint_path = '%s_step_%d.pt' % (self.base_path, step)

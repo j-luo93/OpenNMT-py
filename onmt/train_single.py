@@ -97,7 +97,7 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
     optim = Optimizer.from_opt(model, opt, checkpoint=checkpoint)
 
     # Build model saver
-    model_saver = build_model_saver(model_opt, opt, model, fields, optim)
+    model_saver = build_model_saver(model_opt, opt, model, fields, optim, aux_fields=aux_fields)
 
     trainer = build_trainer(
         opt, device_id, model, fields, optim, model_saver=model_saver, aux_fields=aux_fields)

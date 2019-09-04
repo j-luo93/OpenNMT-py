@@ -32,7 +32,7 @@ def main(opt):
         logger.info('Loading vocab from checkpoint at %s.' % opt.train_from)
         vocab = checkpoint['vocab']
         if opt.crosslingual:
-            aux_vocab = checkpoint['aux_vocab']  # FIXME save this somewhere
+            aux_vocab = checkpoint['aux_vocab']
     elif opt.crosslingual:
         vocab = torch.load(opt.data + '.vocab.pt')
         aux_vocab = torch.load(opt.aux_train_data + '.vocab.pt')
