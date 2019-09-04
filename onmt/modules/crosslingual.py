@@ -87,6 +87,9 @@ class Eat2PlainMonoTask(Task):
         model.encoder.switch('encoder', False)
         model.encoder.embeddings.switch('embedding', False)
         model.encoder.embeddings.switch('almt', False)
+        model.decoder.switch('decoder', False)
+        model.decoder.embeddings.switch('embedding', False)
+        model.decoder.embeddings.switch('almt', False)
 
 
 class Eat2PlainAuxMonoTask(Eat2PlainMonoTask):
@@ -95,6 +98,9 @@ class Eat2PlainAuxMonoTask(Eat2PlainMonoTask):
         model.encoder.switch('encoder', True)
         model.encoder.embeddings.switch('embedding', True)
         model.encoder.embeddings.switch('almt', False)
+        model.decoder.switch('decoder', True)
+        model.decoder.embeddings.switch('embedding', True)
+        model.decoder.embeddings.switch('almt', False)
 
 
 class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
@@ -103,3 +109,6 @@ class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
         model.encoder.switch('encoder', True)
         model.encoder.embeddings.switch('embedding', True)
         model.encoder.embeddings.switch('almt', True)
+        model.decoder.switch('decoder', True)
+        model.decoder.embeddings.switch('embedding', True)
+        model.decoder.embeddings.switch('almt', True)

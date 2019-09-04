@@ -530,8 +530,6 @@ def _pool(data, batch_size, batch_size_fn, batch_size_multiple,
     for p in torchtext.data.batch(
             data, batch_size * pool_factor,
             batch_size_fn=batch_size_fn):
-        # NOTE In crosslingual mode, expand every crosslingual example to two: one for
-        # FIXME
         p_batch = list(batch_iter(
             sorted(p, key=sort_key),
             batch_size,

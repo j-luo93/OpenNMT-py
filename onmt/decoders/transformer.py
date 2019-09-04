@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 
 from onmt.decoders.decoder import DecoderBase
+from onmt.modules.crosslingual import SwitchableModule
 from onmt.modules import MultiHeadedAttention, AverageAttention
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.misc import sequence_mask
@@ -269,3 +270,56 @@ class TransformerEatDecoder(TransformerDecoder):
         if ret % 3 > 0:
             raise RuntimeError(f'max length should be divided by 3, but got {ret}.')
         return ret // 3
+
+
+SUPPORTED = ['init_state', 'state', 'detach_state']
+
+
+class TransformerXDecoder(nn.Module, SwitchableModule):
+
+    def __init__(self, *args, mode='base', decoders=None):
+        super().__init__()
+        if decoders is None:
+            cls = self._get_cls(mode)
+            decoders = {'base': cls(*args), 'crosslingual': cls(*args)}
+        if not isinstance(decoders, dict):
+            raise TypeError(f'Expecting a dict, but got {type(decoders)}')
+        self.decoders = nn.ModuleDict(decoders)
+        self.add_switch('decoder', self.decoders, 'crosslingual', 'base')
+
+    @property
+    def embeddings(self):
+        emb1 = self.decoders['base'].embeddings
+        emb2 = self.decoders['crosslingual'].embeddings
+        if emb1 is not emb2:
+            raise RuntimeError('Both decoders should share the same embedding.')
+        return emb1
+
+    @classmethod
+    def _get_cls(self, mode):
+        assert mode in ['base', 'eat']
+        cls = TransformerDecoder if mode == 'base' else TransformerEatDecoder
+        return cls
+
+    @classmethod
+    def from_opt(cls, opt, embeddings, mode='base'):
+        dec_cls = cls._get_cls(mode)
+        decoders = {
+            'base': dec_cls.from_opt(opt, embeddings),
+            'crosslingual': dec_cls.from_opt(opt, embeddings)
+        }
+        return cls(decoders=decoders)
+
+    def forward(self, tgt, memory_bank, step=None, **kwargs):
+        decoder = self.get_module('decoder')
+        return decoder(tgt, memory_bank, step=step, **kwargs)
+
+    def __getattr__(self, attr):
+        try:
+            return super().__getattr__(attr)
+        except AttributeError:
+            if attr in SUPPORTED:
+                decoder = self.get_module('decoder')
+                return getattr(decoder, attr)
+            else:
+                raise

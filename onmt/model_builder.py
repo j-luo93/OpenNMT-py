@@ -14,6 +14,7 @@ from onmt.encoders import str2enc
 from onmt.decoders import str2dec
 
 from onmt.encoders.transformer import TransformerXEncoder
+from onmt.decoders.transformer import TransformerXDecoder
 from onmt.modules import Embeddings, XEmbeddings, VecEmbedding, CopyGenerator
 from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
@@ -101,9 +102,13 @@ def build_decoder(opt, embeddings):
         opt: the option in current environment.
         embeddings (Embeddings): vocab embeddings for this decoder.
     """
-    dec_type = "ifrnn" if opt.decoder_type == "rnn" and opt.input_feed \
-               else opt.decoder_type
-    return str2dec[dec_type].from_opt(opt, embeddings)
+    if opt.crosslingual:
+        cls = TransformerXDecoder
+    else:
+        dec_type = "ifrnn" if opt.decoder_type == "rnn" and opt.input_feed \
+            else opt.decoder_type
+        cls = str2dec[dec_type]
+    return cls.from_opt(opt, embeddings)
 
 
 def load_test_model(opt, model_path=None):
