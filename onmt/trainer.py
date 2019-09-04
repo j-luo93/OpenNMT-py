@@ -15,6 +15,7 @@ import traceback
 
 import onmt.utils
 from onmt.utils.logging import logger
+from onmt.utils import aeq
 from onmt.inputters.inputter import CrosslingualDatasetIter
 
 
@@ -80,7 +81,8 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None, aux_fi
                            dropout=dropout,
                            dropout_steps=dropout_steps,
                            crosslingual_train_loss=crosslingual_train_loss,
-                           aux_train_loss=aux_train_loss)
+                           aux_train_loss=aux_train_loss,
+                           almt_reg_hyper=opt.almt_reg_hyper)
     return trainer
 
 
@@ -117,7 +119,7 @@ class Trainer(object):
                  n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
-                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None):
+                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None, almt_reg_hyper=0.0):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -141,6 +143,7 @@ class Trainer(object):
         self.earlystopper = earlystopper
         self.dropout = dropout
         self.dropout_steps = dropout_steps
+        self.almt_reg_hyper = almt_reg_hyper
 
         for i in range(len(self.accum_count_l)):
             assert self.accum_count_l[i] > 0
@@ -420,6 +423,15 @@ class Trainer(object):
                         shard_size=self.shard_size,
                         trunc_start=j,
                         trunc_size=trunc_size)
+
+                    if task.name == 'crosslingual' and self.almt_reg_hyper > 0.0:
+                        weight = self.model.encoder.embeddings.almt_layers['mapping'].weight
+                        reg_loss = weight
+                        d1, d2 = weight.shape
+                        aeq(d1, d2)
+                        eye = torch.eye(d1).to(weight.device)
+                        reg_loss = ((weight @ weight.T - eye) ** 2).sum()
+                        reg_loss.backward()
 
                     if loss is not None:
                         self.optim.backward(loss)

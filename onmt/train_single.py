@@ -94,7 +94,12 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
     _check_save_model_path(opt)
 
     # Build optimizer.
-    optim = Optimizer.from_opt(model, opt, checkpoint=checkpoint)
+    if opt.almt_only:
+        almt = model.encoder.embeddings.almt_layers['mapping']
+        logger.info('Only training the alignment mapping.')
+        optim = Optimizer.from_opt(almt, opt, checkpoint=checkpoint)
+    else:
+        optim = Optimizer.from_opt(model, opt, checkpoint=checkpoint)
 
     # Build model saver
     model_saver = build_model_saver(model_opt, opt, model, fields, optim, aux_fields=aux_fields)

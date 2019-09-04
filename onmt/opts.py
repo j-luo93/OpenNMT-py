@@ -327,6 +327,8 @@ def train_opts(parser):
 
     group.add('--aux_train_data', '-atd')
     group.add('--crosslingual_dev_data', '-cdd')
+    group.add('--almt_only', action='store_true')
+    group.add('--almt_reg_hyper', default=0.0, type=float)
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],
               help="In case there are several corpora.")
