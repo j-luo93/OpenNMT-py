@@ -18,7 +18,7 @@ from onmt.utils.logging import logger
 from onmt.inputters.inputter import CrosslingualDatasetIter
 
 
-def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
+def build_trainer(opt, device_id, model, fields, optim, model_saver=None, aux_fields=None):
     """
     Simplify `Trainer` creation based on user `opt`s*
 
@@ -61,8 +61,11 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
 
     report_manager = onmt.utils.build_report_manager(opt)
     crosslingual_train_loss = None
+    aux_train_loss = None
     if opt.crosslingual:
         crosslingual_train_loss = onmt.utils.loss.build_loss_compute(model, tgt_field, opt, crosslingual=True)
+        aux_tgt_field = dict(aux_fields)["tgt"].base_field
+        aux_train_loss = onmt.utils.loss.build_loss_compute(model, aux_tgt_field, opt, crosslingual=False)
 
     trainer = onmt.Trainer(model, train_loss, valid_loss, optim, trunc_size,
                            shard_size, norm_method,
@@ -76,7 +79,8 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None):
                            earlystopper=earlystopper,
                            dropout=dropout,
                            dropout_steps=dropout_steps,
-                           crosslingual_train_loss=crosslingual_train_loss)
+                           crosslingual_train_loss=crosslingual_train_loss,
+                           aux_train_loss=aux_train_loss)
     return trainer
 
 
@@ -113,7 +117,7 @@ class Trainer(object):
                  n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
-                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None):
+                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -148,8 +152,9 @@ class Trainer(object):
         # Set model in training mode.
         self.model.train()
 
-        # Set crosslingual training loss.
+        # Set crosslingual and aux training losses.
         self.crosslingual_train_loss = crosslingual_train_loss
+        self.aux_train_loss = aux_train_loss
 
     def _accum_count(self, step):
         for i in range(len(self.accum_steps)):
@@ -170,6 +175,7 @@ class Trainer(object):
         self.accum_count = self._accum_count(self.optim.training_step)
         for batch in iterator:
             batches.append(batch)
+            # print(batch.src[0].max(), batch.tgt.max())
             if self.norm_method == "tokens":
                 num_tokens = batch.tgt[1:, :, 0].ne(
                     self.train_loss.padding_idx).sum()
@@ -397,7 +403,13 @@ class Trainer(object):
                 bptt = True
 
                 # 2.9 Get appropriate loss function.
-                loss_func = self.crosslingual_train_loss if task.name == 'crosslingual' else self.train_loss
+                if task.name == 'crosslingual':
+                    loss_func = self.crosslingual_train_loss
+                elif task.name == 'aux':
+                    loss_func = self.aux_train_loss
+                else:
+                    loss_func = self.train_loss
+
                 # 3. Compute loss.
                 try:
                     loss, batch_stats = loss_func(

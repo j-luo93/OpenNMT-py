@@ -50,7 +50,7 @@ def main(opt):
     fields = get_fields(vocab)
     aux_fields = None
     if opt.crosslingual:
-        aux_fields = get_fields(vocab)
+        aux_fields = get_fields(aux_vocab)
 
     if opt.crosslingual:
         fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base'),

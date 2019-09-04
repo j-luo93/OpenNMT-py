@@ -681,8 +681,14 @@ class MultipleDatasetIterator(object):
                     self.pool_factor):
                 new_minibatch = sorted(new_minibatch, key=self.sort_key, reverse=True)
                 minibatch, old_minibatch, task = self._get_minibatch(new_minibatch, old_minibatch)
+                try:
+                    task_index = task.index
+                    if task_index is None:
+                        task_index = 0
+                except AttributeError:
+                    task_index = 0
                 batch = torchtext.data.Batch(minibatch,
-                                             self.iterables[0].dataset,
+                                             self.iterables[task_index].dataset,
                                              self.device)
                 batch.task = task
                 yield batch
@@ -714,9 +720,9 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
         if not isinstance(fields_info, list):
             raise TypeError(f'Expecting "fields_info" of type list, but got "{type(fields_info)}".')
 
-        for name, fields, data_attr, task_cls, task_name in fields_info:
+        for i, (name, fields, data_attr, task_cls, task_name) in enumerate(fields_info):
             dataset_iter = build_dataset_iter(name, fields, opt, multi=True,
-                                              data_attr=data_attr, task_cls=task_cls, task_name=task_name)
+                                              data_attr=data_attr, task_cls=task_cls, task_name=task_name, task_index=i)
             self.iterables.append(dataset_iter)
 
     def _iter_examples(self):
@@ -759,7 +765,7 @@ class DatasetLazyIter(object):
 
     def __init__(self, dataset_paths, fields, batch_size, batch_size_fn,
                  batch_size_multiple, device, is_train, pool_factor,
-                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None, task_name='default'):
+                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None, task_name='default', task_index=None):
         self._paths = dataset_paths
         self.fields = fields
         self.batch_size = batch_size
@@ -771,7 +777,7 @@ class DatasetLazyIter(object):
         self.num_batches_multiple = num_batches_multiple
         self.yield_raw_example = yield_raw_example
         self.pool_factor = pool_factor
-        self.task = task_cls(self._paths, name=task_name) if task_cls is not None else None
+        self.task = task_cls(self._paths, name=task_name, index=task_index) if task_cls is not None else None
 
     def _iter_dataset(self, path):
         logger.info('Loading dataset from %s' % path)
@@ -853,7 +859,7 @@ def max_tok_len(new, count, sofar):
     return max(src_elements, tgt_elements)
 
 
-def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data', task_cls=None, task_name=None):
+def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data', task_cls=None, task_name=None, task_index=None):
     """
     This returns user-defined train/validate data iterator for the trainer
     to iterate over. We implement simple ordered iterator strategy here,
@@ -891,7 +897,8 @@ def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, dat
         num_batches_multiple=max(opt.accum_count) * opt.world_size,
         yield_raw_example=multi,
         task_cls=task_cls,
-        task_name=task_name)
+        task_name=task_name,
+        task_index=task_index)
 
 
 def build_crosslingual_dataset_iter(fields_info, opt):

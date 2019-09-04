@@ -16,6 +16,7 @@ from onmt.decoders import str2dec
 from onmt.encoders.transformer import TransformerXEncoder
 from onmt.decoders.transformer import TransformerXDecoder
 from onmt.modules import Embeddings, XEmbeddings, VecEmbedding, CopyGenerator
+from onmt.modules.generator import Generator, XGenerator
 from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
 from onmt.utils.logging import logger
@@ -202,14 +203,14 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, aux_f
             gen_func = onmt.modules.sparse_activations.LogSparsemax(dim=-1)
         else:
             gen_func = nn.LogSoftmax(dim=-1)
-        generator = nn.Sequential(
-            nn.Linear(model_opt.dec_rnn_size,
-                      len(fields["tgt"].base_field.vocab)),
-            Cast(torch.float32),
-            gen_func
-        )
+        cls = XGenerator if model_opt.crosslingual else Generator
+        gen_d_in = model_opt.dec_rnn_size
+        gen_d_out = len(fields["tgt"].base_field.vocab)
+        if model_opt.crosslingual:
+            gen_d_out = [gen_d_out, len(aux_fields["tgt"].base_field.vocab)]
+        generator = cls(gen_d_in, gen_d_out, gen_func)
         if model_opt.share_decoder_embeddings:
-            generator[0].weight = decoder.embeddings.word_lut.weight
+            generator.share_embeddings(decoder.embeddings)
     else:
         tgt_base_field = fields["tgt"].base_field
         vocab_size = len(tgt_base_field.vocab)

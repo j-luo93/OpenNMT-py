@@ -100,7 +100,7 @@ def main(opt, device_id, batch_queue=None, semaphore=None, train_iter=None, pass
     model_saver = build_model_saver(model_opt, opt, model, fields, optim)
 
     trainer = build_trainer(
-        opt, device_id, model, fields, optim, model_saver=model_saver)
+        opt, device_id, model, fields, optim, model_saver=model_saver, aux_fields=aux_fields)
 
     if train_iter is not None:
         pass  # NOTE Use the passed one.

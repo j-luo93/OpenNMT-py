@@ -60,7 +60,7 @@ class Task(ABC):
         if format not in ['eat', 'plain']:
             raise ValueError(f'Format "{format}" not supported.')
 
-    def __init__(self, data_path, src_format, tgt_format, name=None):
+    def __init__(self, data_path, src_format, tgt_format, name=None, index=None):
         self._check_format(src_format)
         self._check_format(tgt_format)
 
@@ -68,6 +68,7 @@ class Task(ABC):
         self.src_format = src_format
         self.tgt_format = tgt_format
         self.name = name
+        self.index = index
 
     @abstractmethod
     def set_switches(self, model):
@@ -80,8 +81,8 @@ class Task(ABC):
 
 class Eat2PlainMonoTask(Task):
 
-    def __init__(self, data_path, name=None):
-        super().__init__(data_path, 'eat', 'plain', name=name)
+    def __init__(self, data_path, name=None, index=None):
+        super().__init__(data_path, 'eat', 'plain', name=name, index=index)
 
     def set_switches(self, model):
         model.encoder.switch('encoder', False)
@@ -90,6 +91,7 @@ class Eat2PlainMonoTask(Task):
         model.decoder.switch('decoder', False)
         model.decoder.embeddings.switch('embedding', False)
         model.decoder.embeddings.switch('almt', False)
+        model.generator.switch('generator', False)
 
 
 class Eat2PlainAuxMonoTask(Eat2PlainMonoTask):
@@ -101,6 +103,7 @@ class Eat2PlainAuxMonoTask(Eat2PlainMonoTask):
         model.decoder.switch('decoder', True)
         model.decoder.embeddings.switch('embedding', True)
         model.decoder.embeddings.switch('almt', False)
+        model.generator.switch('generator', True)
 
 
 class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
@@ -112,3 +115,4 @@ class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
         model.decoder.switch('decoder', True)
         model.decoder.embeddings.switch('embedding', True)
         model.decoder.embeddings.switch('almt', True)
+        model.generator.switch('generator', True)
