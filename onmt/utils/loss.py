@@ -193,6 +193,7 @@ class LossComputeBase(nn.Module):
 
 
 class BestExampleLoss(nn.Module):
+    # FIXME This is actually wrong.
 
     def __init__(self, ignore_index):
         super().__init__()

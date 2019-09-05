@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class SwitchableModule:
@@ -116,3 +117,30 @@ class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
         model.decoder.embeddings.switch('embedding', True)
         model.decoder.embeddings.switch('almt', True)
         model.generator.switch('generator', True)
+
+
+class MLP(nn.Module):
+
+    def __init__(self, d_in, d_hids, d_out):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        for di, do in zip([d_in] + d_hids, d_hids + [d_out]):
+            self.layers.append(nn.Linear(di, do))
+
+    def forward(self, inp):
+        for layer in self.layers[:-1]:
+            out = layer(inp)
+            inp = F.leaky_relu(out. negative_slope=0.1)
+        return self.layers[-1](inp)
+
+
+class RolePredictor(nn.Module):
+    """A module that predicts an agent or theme based on the event."""
+
+    def __init__(self, d_emb, vocab_size):
+        super().__init__()
+        self.agent_pred = MLP(d_emb, [d_emb], vocab_size)
+        self.theme_pred = MLP(d_emb, [d_emb], vocab_size)
+
+    def forward(self, inp):
+        return self.agent_pred(inp), self.theme_pred(inp)
