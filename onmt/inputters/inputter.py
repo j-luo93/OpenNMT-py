@@ -720,9 +720,9 @@ class CrosslingualDatasetIter(MultipleDatasetIterator):
         if not isinstance(fields_info, list):
             raise TypeError(f'Expecting "fields_info" of type list, but got "{type(fields_info)}".')
 
-        for i, (name, fields, data_attr, task_cls, task_name) in enumerate(fields_info):
+        for i, (name, fields, data_attr, task_cls, task_name, eat_format) in enumerate(fields_info):
             dataset_iter = build_dataset_iter(name, fields, opt, multi=True,
-                                              data_attr=data_attr, task_cls=task_cls, task_name=task_name, task_index=i)
+                                              data_attr=data_attr, task_cls=task_cls, task_name=task_name, task_index=i, eat_format=eat_format)
             self.iterables.append(dataset_iter)
 
     def _iter_examples(self):
@@ -765,7 +765,8 @@ class DatasetLazyIter(object):
 
     def __init__(self, dataset_paths, fields, batch_size, batch_size_fn,
                  batch_size_multiple, device, is_train, pool_factor,
-                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None, task_name='default', task_index=None):
+                 repeat=True, num_batches_multiple=1, yield_raw_example=False, task_cls=None, task_name='default', task_index=None, eat_format='old'):
+        assert eat_format in ['old', 'new', 'combined']
         self._paths = dataset_paths
         self.fields = fields
         self.batch_size = batch_size
@@ -778,6 +779,7 @@ class DatasetLazyIter(object):
         self.yield_raw_example = yield_raw_example
         self.pool_factor = pool_factor
         self.task = task_cls(self._paths, name=task_name, index=task_index) if task_cls is not None else None
+        self.eat_format = eat_format
 
     def _iter_dataset(self, path):
         logger.info('Loading dataset from %s' % path)
@@ -812,6 +814,14 @@ class DatasetLazyIter(object):
         for batch in self._iter_helper():
             if self.task is not None:
                 batch.task = self.task
+
+            if self.eat_format == 'combined':
+                sl, bs = batch.src.shape
+                assert sl % 9 == 0
+                tmp_src = batch.src.view(sl // 9, 9, bs)
+                batch.src_old = tmp_src[:, :3]
+                batch.src_new = tmp_src[:, 3:]
+
             yield batch
 
     def _iter_helper(self):
@@ -859,7 +869,7 @@ def max_tok_len(new, count, sofar):
     return max(src_elements, tgt_elements)
 
 
-def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data', task_cls=None, task_name=None, task_index=None):
+def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, data_attr='data', task_cls=None, task_name=None, task_index=None, eat_format='old'):
     """
     This returns user-defined train/validate data iterator for the trainer
     to iterate over. We implement simple ordered iterator strategy here,
@@ -898,7 +908,8 @@ def build_dataset_iter(corpus_type, fields, opt, is_train=True, multi=False, dat
         yield_raw_example=multi,
         task_cls=task_cls,
         task_name=task_name,
-        task_index=task_index)
+        task_index=task_index,
+        new_format=new_format)
 
 
 def build_crosslingual_dataset_iter(fields_info, opt):

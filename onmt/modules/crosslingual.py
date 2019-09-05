@@ -130,7 +130,7 @@ class MLP(nn.Module):
     def forward(self, inp):
         for layer in self.layers[:-1]:
             out = layer(inp)
-            inp = F.leaky_relu(out. negative_slope=0.1)
+            inp = F.leaky_relu(out, negative_slope=0.1)
         return self.layers[-1](inp)
 
 

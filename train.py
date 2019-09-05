@@ -8,6 +8,7 @@ import onmt.opts as opts
 import onmt.utils.distributed
 
 from onmt.utils.misc import set_random_seed
+from onmt.utils import aeq
 from onmt.utils.logging import init_logger, logger
 from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask, Eat2PlainAuxMonoTask
 from onmt.train_single import main as single_main
@@ -53,9 +54,10 @@ def main(opt):
         aux_fields = get_fields(aux_vocab)
 
     if opt.crosslingual:
-        fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base'),
-                       ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux'),
-                       ('train', aux_fields, 'aux_train_data', Eat2PlainCrosslingualTask, 'crosslingual')]
+        aeq(len(opt.eat_formats), 3)
+        fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base', opt.eat_formats[0]),
+                       ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux', opt.eat_formats[1]),
+                       ('train', aux_fields, 'aux_train_data', Eat2PlainCrosslingualTask, 'crosslingual', opt.eat_format[2])]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []

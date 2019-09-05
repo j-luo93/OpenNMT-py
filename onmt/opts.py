@@ -332,6 +332,8 @@ def train_opts(parser):
     group.add('--almt_only', action='store_true')
     group.add('--almt_reg_hyper', default=0.0, type=float)
     group.add('--no_use_opt_from_trained', '-nuo', dest='use_opt_from_trained', action='store_false')
+    group.add('--eat_formats', type=str, nargs='+', default=['old'])
+
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],
               help="In case there are several corpora.")
