@@ -10,6 +10,7 @@ from onmt.modules.crosslingual import SwitchableModule
 from onmt.modules.eat_layer import EatLayer
 from onmt.modules.position_ffn import PositionwiseFeedForward
 from onmt.utils.misc import sequence_mask
+from onmt.utils.logging import logger
 
 
 class TransformerEncoderLayer(nn.Module):
@@ -195,13 +196,20 @@ class TransformerEatEncoder(TransformerEncoder):
 
 class TransformerXEncoder(nn.Module, SwitchableModule):
 
-    def __init__(self, *args, mode='base', encoders=None):
+    def __init__(self, *args, mode='base', encoders=None, share_encoder=False):
         super().__init__()
         if encoders is None:
             cls = self._get_cls(mode)
             encoders = {'base': cls(*args), 'crosslingual': cls(*args)}
         if not isinstance(encoders, dict):
             raise TypeError(f'Expecting a dict, but got {type(encoders)}')
+
+        # Share the encoder if specified.
+        breakpoint() # DEBUG
+        if share_encoder:
+            logger.info('Sharing encoder in TransformerXEncoder.')
+            encoders['crosslingual'] = encoders['base']
+
         self.encoders = nn.ModuleDict(encoders)
         self.add_switch('encoder', self.encoders, 'crosslingual', 'base')
 
@@ -226,7 +234,7 @@ class TransformerXEncoder(nn.Module, SwitchableModule):
             'base': enc_cls.from_opt(opt, embeddings),
             'crosslingual': enc_cls.from_opt(opt, embeddings)
         }
-        return cls(encoders=encoders)
+        return cls(encoders=encoders, share_encoder=opt.crosslingual_share_encoder)
 
     def forward(self, src, lengths=None):
         encoder = self.get_module('encoder')

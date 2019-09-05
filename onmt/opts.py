@@ -20,6 +20,8 @@ def model_opts(parser):
     """
     parser.add('--crosslingual', '-cl', action='store_true',
                help='Use crosslingual mode.')
+    parser.add('--crosslingual_share_encoder', '-clse', action='store_true',
+               help='Share the encoder in crosslingual mode.')
 
     # Embedding Options
     group = parser.add_argument_group('Model-Embeddings')
@@ -329,6 +331,7 @@ def train_opts(parser):
     group.add('--crosslingual_dev_data', '-cdd')
     group.add('--almt_only', action='store_true')
     group.add('--almt_reg_hyper', default=0.0, type=float)
+    group.add('--no_use_opt_from_trained', '-nuo', dest='use_opt_from_trained', action='store_false')
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],
               help="In case there are several corpora.")
