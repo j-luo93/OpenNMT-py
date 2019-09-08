@@ -16,6 +16,7 @@ from onmt.decoders import str2dec
 from onmt.encoders.transformer import TransformerXEncoder
 from onmt.decoders.transformer import TransformerXDecoder
 from onmt.modules import Embeddings, XEmbeddings, VecEmbedding, CopyGenerator
+from onmt.modules.crosslingual import RolePredictor
 from onmt.modules.generator import Generator, XGenerator
 from onmt.modules.util_class import Cast
 from onmt.utils.misc import use_gpu
@@ -188,6 +189,12 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, aux_f
 
     decoder = build_decoder(model_opt, tgt_emb)
 
+    # Get a predictor if needed.
+    predictor = None
+    if opt.crosslingual == 'lm':
+        breakpoint() # DEBUG
+        predictor = RolePredictor(model_opt.word_vec_size, len(src_emb))
+
     # Build NMTModel(= encoder + decoder).
     if gpu and gpu_id is not None:
         device = torch.device("cuda", gpu_id)
@@ -195,7 +202,7 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, aux_f
         device = torch.device("cuda")
     elif not gpu:
         device = torch.device("cpu")
-    model = onmt.models.NMTModel(encoder, decoder)
+    model = onmt.models.NMTModel(encoder, decoder, predictor=predictor)
 
     # Build Generator.
     if not model_opt.copy_attn:

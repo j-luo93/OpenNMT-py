@@ -10,7 +10,7 @@ import onmt.utils.distributed
 from onmt.utils.misc import set_random_seed
 from onmt.utils import aeq
 from onmt.utils.logging import init_logger, logger
-from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask, Eat2PlainAuxMonoTask
+from onmt.modules.crosslingual import Eat2PlainCrosslingualTask, Eat2PlainMonoTask, Eat2PlainAuxMonoTask, EatLMMonoTask, EatLMCrosslingualTask
 from onmt.train_single import main as single_main
 from onmt.utils.parse import ArgumentParser
 from onmt.inputters.inputter import build_dataset_iter, \
@@ -35,6 +35,7 @@ def main(opt):
         if opt.crosslingual:
             aux_vocab = checkpoint['aux_vocab']
     elif opt.crosslingual:
+        assert opt.crosslingual in ['old', 'lm']
         vocab = torch.load(opt.data + '.vocab.pt')
         aux_vocab = torch.load(opt.aux_train_data + '.vocab.pt')
     else:
@@ -54,10 +55,17 @@ def main(opt):
         aux_fields = get_fields(aux_vocab)
 
     if opt.crosslingual:
-        aeq(len(opt.eat_formats), 3)
-        fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base', opt.eat_formats[0]),
-                       ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux', opt.eat_formats[1]),
-                       ('train', aux_fields, 'aux_train_data', Eat2PlainCrosslingualTask, 'crosslingual', opt.eat_format[2])]
+        if opt.crosslingual == 'old':
+            aeq(len(opt.eat_formats), 3)
+            fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base', opt.eat_formats[0]),
+                           ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux', opt.eat_formats[1]),
+                           ('train', aux_fields, 'aux_train_data', Eat2PlainCrosslingualTask, 'crosslingual', opt.eat_format[2])]
+        else:
+            aeq(len(opt.eat_formats), 4)
+            fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base', opt.eat_formats[0]),
+                           ('train', fields, 'data', EatLMMonoTask, 'lm', opt.eat_formats[1]),
+                           ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux', opt.eat_formats[2]),
+                           ('train', aux_fields, 'aux_train_data', EatLMCrosslingualTask, 'crosslingual', opt.eat_format[3])]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []

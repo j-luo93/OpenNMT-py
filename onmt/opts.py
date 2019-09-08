@@ -18,7 +18,7 @@ def model_opts(parser):
     These options are passed to the construction of the model.
     Be careful with these as they will be used during translation.
     """
-    parser.add('--crosslingual', '-cl', action='store_true',
+    parser.add('--crosslingual', '-cl', default='',
                help='Use crosslingual mode.')
     parser.add('--crosslingual_share_encoder', '-clse', action='store_true',
                help='Share the encoder in crosslingual mode.')
@@ -333,7 +333,6 @@ def train_opts(parser):
     group.add('--almt_reg_hyper', default=0.0, type=float)
     group.add('--no_use_opt_from_trained', '-nuo', dest='use_opt_from_trained', action='store_false')
     group.add('--eat_formats', type=str, nargs='+', default=['old'])
-
 
     group.add('--data_ids', '-data_ids', nargs='+', default=[None],
               help="In case there are several corpora.")

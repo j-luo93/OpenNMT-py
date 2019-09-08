@@ -64,9 +64,16 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None, aux_fi
     crosslingual_train_loss = None
     aux_train_loss = None
     if opt.crosslingual:
-        crosslingual_train_loss = onmt.utils.loss.build_loss_compute(model, tgt_field, opt, crosslingual=True)
+        if opt.crosslingual == 'old':
+            # FIXME This is actually wrong. The vocab here is right, but the dataset is built on the wrong (for aux task) vocab.
+            crosslingual_tgt_field = tgt_field
+        else:
+            # NOTE Use the src side, since I'm only predicting the source side (EAT side).
+            crosslingual_tgt_field = dict(aux_fields)['src'].base_field
+        crosslingual_train_loss = onmt.utils.loss.build_loss_compute(
+            model, crosslingual_tgt_field, opt, crosslingual=opt.crosslingual)
         aux_tgt_field = dict(aux_fields)["tgt"].base_field
-        aux_train_loss = onmt.utils.loss.build_loss_compute(model, aux_tgt_field, opt, crosslingual=False)
+        aux_train_loss = onmt.utils.loss.build_loss_compute(model, aux_tgt_field, opt, crosslingual='')
 
     trainer = onmt.Trainer(model, train_loss, valid_loss, optim, trunc_size,
                            shard_size, norm_method,
@@ -82,7 +89,8 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None, aux_fi
                            dropout_steps=dropout_steps,
                            crosslingual_train_loss=crosslingual_train_loss,
                            aux_train_loss=aux_train_loss,
-                           almt_reg_hyper=opt.almt_reg_hyper)
+                           almt_reg_hyper=opt.almt_reg_hyper,
+                           crosslingual=opt.crosslingual)
     return trainer
 
 
@@ -119,7 +127,7 @@ class Trainer(object):
                  n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
-                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None, almt_reg_hyper=0.0):
+                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None, almt_reg_hyper=0.0, crosslingual=''):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -144,6 +152,7 @@ class Trainer(object):
         self.dropout = dropout
         self.dropout_steps = dropout_steps
         self.almt_reg_hyper = almt_reg_hyper
+        self.crosslingual = crosslingual
 
         for i in range(len(self.accum_count_l)):
             assert self.accum_count_l[i] > 0
@@ -374,17 +383,28 @@ class Trainer(object):
             self.optim.zero_grad()
 
         for k, batch in enumerate(true_batches):
-            target_size = batch.tgt.size(0)
+            task = self._get_task(batch)
+            if task.category == 'lm':
+                target_size = batch.tgt_event.size(0)
+            else:
+                target_size = batch.tgt.size(0)
             # Truncated BPTT: reminder not compatible with accum > 1
             if self.trunc_size:
                 trunc_size = self.trunc_size
             else:
                 trunc_size = target_size
 
-            src, src_lengths = batch.src if isinstance(batch.src, tuple) \
-                else (batch.src, None)
+            if self.crosslingual == 'lm':
+                src_attr = 'src_event'
+            elif self.crosslingual == 'old':
+                src_attr = 'src_old' if batch.eat_format == 'combined' else 'src'
+            elif batch.eat_format in ['old', 'new']:
+                src_attr = 'src'
+            else:
+                src_attr = 'src_old'
+            src, src_lengths = getattr(batch, src_attr) if isinstance(getattr(batch, src_attr), tuple) \
+                else (getattr(batch, src_attr), None)
 
-            task = self._get_task(batch)
             r_stats = report_stats[task.name]
             t_stats = total_stats[task.name]
             if src_lengths is not None:
@@ -415,14 +435,39 @@ class Trainer(object):
 
                 # 3. Compute loss.
                 try:
-                    loss, batch_stats = loss_func(
-                        batch,
-                        outputs,
-                        attns,
-                        normalization=normalization,
-                        shard_size=self.shard_size,
-                        trunc_start=j,
-                        trunc_size=trunc_size)
+                    def loss_call(batch, outputs):
+                        loss, batch_stats = loss_func(
+                            batch,
+                            outputs,
+                            attns,
+                            normalization=normalization,
+                            shard_size=self.shard_size,
+                            trunc_start=j,
+                            trunc_size=trunc_size)
+                        return loss, batch_stats
+
+                    if task.category == 'lm':
+                        agent_preds = outputs['agent']
+                        theme_preds = outputs['theme']
+
+                        batch.agent_preds = agent_preds
+                        batch.theme_preds = theme_preds
+                        batch.tgt_backup = batch.tgt
+
+                        def update_loss_and_stats(tgt_attr, preds, loss, batch_stats):
+                            batch.tgt = getattr(batch, tgt_attr)
+                            loss_call, batch_stats_call = loss_call(batch, preds)
+                            loss += loss_call
+                            batch_stats.update(batch_stats_call)
+
+                        loss = 0.0
+                        batch_stats = onmt.utils.Statistics()
+                        update_loss_and_stats('tgt_agent', agent_preds, loss, batch_stats)
+                        update_loss_and_stats('tgt_agent_mod', agent_preds, loss, batch_stats)
+                        update_loss_and_stats('tgt_theme', theme_preds, loss, batch_stats)
+                        update_loss_and_stats('tgt_theme_mod', theme_preds, loss, batch_stats)
+                    else:
+                        loss, batch_stats = loss_call(batch)
 
                     if task.name == 'crosslingual' and self.almt_reg_hyper > 0.0:
                         weight = self.model.encoder.embeddings.almt_layers['mapping'].weight

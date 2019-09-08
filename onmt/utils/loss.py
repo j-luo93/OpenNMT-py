@@ -12,7 +12,7 @@ from onmt.modules.sparse_losses import SparsemaxLoss
 from onmt.modules.sparse_activations import LogSparsemax
 
 
-def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=False):
+def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=''):
     """
     Returns a LossCompute subclass which wraps around an nn.Module subclass
     (such as nn.NLLLoss) which defines the loss criterion. The LossCompute
@@ -30,8 +30,11 @@ def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=False):
         assert opt.coverage_attn, "--coverage_attn needs to be set in " \
             "order to use --lambda_coverage != 0"
 
-    if crosslingual:
+    if crosslingual == 'old':
         criterion = BestExampleLoss(ignore_index=padding_idx)
+    elif crosslingual == 'lm':
+        breakpoint()  # DEBUG
+        criterion = EatLMLoss(ignore_index=padding_idx, empty_index=tgt_field.vocab.stoi['<EMPTY>'])
     elif opt.copy_attn:
         criterion = onmt.modules.CopyGeneratorLoss(
             len(tgt_field.vocab), opt.copy_attn_force,
@@ -202,6 +205,18 @@ class BestExampleLoss(nn.Module):
     def forward(self, output, target):
         """Note that `target` is ignored."""
         return -output.max(dim=-1)[0].sum()
+
+
+class EatLMLoss(nn.Module):
+
+    def __init__(self, ignore_index, empty_index):
+        super().__init__()
+        self.ignore_index = ignore_index
+        self.empty_index = empty_index
+
+    def forward(self, output, target):
+        breakpoint()  # DEBUG
+        pass
 
 
 class LabelSmoothingLoss(nn.Module):

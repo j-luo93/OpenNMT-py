@@ -811,16 +811,40 @@ class DatasetLazyIter(object):
         # gc.collect()
 
     def __iter__(self):
+
         for batch in self._iter_helper():
             if self.task is not None:
                 batch.task = self.task
 
             if self.eat_format == 'combined':
-                sl, bs = batch.src.shape
+                src = batch.src[0] if isinstance(batch.src, tuple) else batch.src
+
+                sl, bs = src.shape
                 assert sl % 9 == 0
-                tmp_src = batch.src.view(sl // 9, 9, bs)
+
+                tmp_src = src.view(sl // 9, 9, bs)
                 batch.src_old = tmp_src[:, :3]
                 batch.src_new = tmp_src[:, 3:]
+                batch.eat_format = eat_format
+
+            if batch.task.category == 'lm':
+                if self.eat_format in ['new', 'combined']:
+                    raise ValueError(f'Wrong eat format {self.eat_format}.')
+
+                src_attr = 'src' if self.eat_format == 'new' else 'src_new'
+                src = getattr(batch, src_attr)
+                src = src[0] if isinstance(src, tuple) else src
+
+                sl, bs = src.shape
+                assert sl % 6 == 0
+
+                tmp_src = src.view(sl // 6, 6, bs)
+                batch.src_event = tmp_src[:, 0]
+                batch.tgt_agent = tmp_src[:, 1]
+                batch.tgt_theme = tmp_src[:, 2]
+                batch.tgt_event_mod = tmp_src[:, 3]
+                batch.tgt_agent_mod = tmp_src[:, 4]
+                batch.tgt_theme_mod = tmp_src[:, 5]
 
             yield batch
 

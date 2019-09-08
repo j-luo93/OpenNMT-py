@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractproperty
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -71,6 +71,10 @@ class Task(ABC):
         self.name = name
         self.index = index
 
+    @abstractproperty
+    def category(self):
+        pass
+
     @abstractmethod
     def set_switches(self, model):
         pass
@@ -83,7 +87,7 @@ class Task(ABC):
 class Eat2PlainMonoTask(Task):
 
     def __init__(self, data_path, name=None, index=None):
-        super().__init__(data_path, 'eat', 'plain', name=name, index=index)
+        super().__init__(data_path, 'eat', 'plain', name=name, index=index, sides='both')
 
     def set_switches(self, model):
         model.encoder.switch('encoder', False)
@@ -93,6 +97,10 @@ class Eat2PlainMonoTask(Task):
         model.decoder.embeddings.switch('embedding', False)
         model.decoder.embeddings.switch('almt', False)
         model.generator.switch('generator', False)
+
+    @property
+    def category(self):
+        return 'seq2seq'
 
 
 class Eat2PlainAuxMonoTask(Eat2PlainMonoTask):
@@ -119,6 +127,26 @@ class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
         model.generator.switch('generator', True)
 
 
+class EatLMMonoTask(Eat2PlainMonoTask):
+
+    def __init__(self, data_path, name=None, index=None):
+        super().__init__(data_path, 'eat', None, name=name, index=index)
+
+    @property
+    def category(self):
+        return 'lm'
+
+
+class EatLMCrosslingualTask(Eat2PlainCrosslingualTask):
+
+    def __init__(self, data_path, name=None, index=None):
+        super().__init__(data_path, 'eat', None, name=name, index=index)
+
+    @property
+    def category(self):
+        return 'lm'
+
+
 class MLP(nn.Module):
 
     def __init__(self, d_in, d_hids, d_out):
@@ -143,4 +171,7 @@ class RolePredictor(nn.Module):
         self.theme_pred = MLP(d_emb, [d_emb], vocab_size)
 
     def forward(self, inp):
-        return self.agent_pred(inp), self.theme_pred(inp)
+        return {
+            'agent': self.agent_pred(inp),
+            'theme': self.theme_pred(inp)
+        }
