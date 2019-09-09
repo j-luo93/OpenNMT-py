@@ -63,15 +63,20 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None, aux_fi
     report_manager = onmt.utils.build_report_manager(opt)
     crosslingual_train_loss = None
     aux_train_loss = None
+    lm_train_loss = None
     if opt.crosslingual:
         if opt.crosslingual == 'old':
             # FIXME This is actually wrong. The vocab here is right, but the dataset is built on the wrong (for aux task) vocab.
             crosslingual_tgt_field = tgt_field
+            crosslingual_shift_target = True
         else:
             # NOTE Use the src side, since I'm only predicting the source side (EAT side).
             crosslingual_tgt_field = dict(aux_fields)['src'].base_field
+            crosslingual_shift_target = False
+            lm_train_loss = onmt.utils.loss.build_loss_compute(model, dict(
+                fields)['src'].base_field, opt, crosslingual='', skip_generator=True, shift_target=False)  # NOTE It's actually not crosslingual.
         crosslingual_train_loss = onmt.utils.loss.build_loss_compute(
-            model, crosslingual_tgt_field, opt, crosslingual=opt.crosslingual)
+            model, crosslingual_tgt_field, opt, crosslingual=opt.crosslingual, shift_target=crosslingual_shift_target)
         aux_tgt_field = dict(aux_fields)["tgt"].base_field
         aux_train_loss = onmt.utils.loss.build_loss_compute(model, aux_tgt_field, opt, crosslingual='')
 
@@ -87,6 +92,7 @@ def build_trainer(opt, device_id, model, fields, optim, model_saver=None, aux_fi
                            earlystopper=earlystopper,
                            dropout=dropout,
                            dropout_steps=dropout_steps,
+                           lm_train_loss=lm_train_loss,
                            crosslingual_train_loss=crosslingual_train_loss,
                            aux_train_loss=aux_train_loss,
                            almt_reg_hyper=opt.almt_reg_hyper,
@@ -127,7 +133,7 @@ class Trainer(object):
                  n_gpu=1, gpu_rank=1,
                  gpu_verbose_level=0, report_manager=None, model_saver=None,
                  average_decay=0, average_every=1, model_dtype='fp32',
-                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None, almt_reg_hyper=0.0, crosslingual=''):
+                 earlystopper=None, dropout=[0.3], dropout_steps=[0], crosslingual_train_loss=None, aux_train_loss=None, almt_reg_hyper=0.0, crosslingual='', lm_train_loss=None):
         # Basic attributes.
         self.model = model
         self.train_loss = train_loss
@@ -167,6 +173,7 @@ class Trainer(object):
         # Set crosslingual and aux training losses.
         self.crosslingual_train_loss = crosslingual_train_loss
         self.aux_train_loss = aux_train_loss
+        self.lm_train_loss = lm_train_loss
 
     def _accum_count(self, step):
         for i in range(len(self.accum_steps)):
@@ -244,13 +251,23 @@ class Trainer(object):
             logger.info('Start training loop and validate every %d steps...',
                         valid_steps)
 
-        total_stats = {'base': onmt.utils.Statistics()}
-        report_stats = {'base': onmt.utils.Statistics()}
+        # ---------------------------------------------------------------------------- #
+        #                              Create empty stats                              #
+        # ---------------------------------------------------------------------------- #
+
+        def make_stats(keys):
+            total_stats = {k: onmt.utils.Statistics() for k in keys}
+            report_stats = {k: onmt.utils.Statistics() for k in keys}
+            return total_stats, report_stats
+
+        keys = ['base']
         if isinstance(train_iter, CrosslingualDatasetIter):
-            total_stats['aux'] = onmt.utils.Statistics()
-            report_stats['aux'] = onmt.utils.Statistics()
-            total_stats['crosslingual'] = onmt.utils.Statistics()
-            report_stats['crosslingual'] = onmt.utils.Statistics()
+            keys.extend(['aux', 'crosslingual'])
+            if self.crosslingual == 'lm':
+                keys.append('lm')
+
+        total_stats, report_stats = make_stats(keys)
+
         self._start_report_manager(start_time=total_stats['base'].start_time)
 
         for i, (batches, normalization) in enumerate(
@@ -385,7 +402,7 @@ class Trainer(object):
         for k, batch in enumerate(true_batches):
             task = self._get_task(batch)
             if task.category == 'lm':
-                target_size = batch.tgt_event.size(0)
+                target_size = batch.tgt_agent.size(0)
             else:
                 target_size = batch.tgt.size(0)
             # Truncated BPTT: reminder not compatible with accum > 1
@@ -394,9 +411,9 @@ class Trainer(object):
             else:
                 trunc_size = target_size
 
-            if self.crosslingual == 'lm':
+            if task.name == 'lm' or (task.name == 'crosslingual' and self.crosslingual == 'lm'):
                 src_attr = 'src_event'
-            elif self.crosslingual == 'old':
+            elif task.name == 'crosslingual':
                 src_attr = 'src_old' if batch.eat_format == 'combined' else 'src'
             elif batch.eat_format in ['old', 'new']:
                 src_attr = 'src'
@@ -428,6 +445,8 @@ class Trainer(object):
                 # 2.9 Get appropriate loss function.
                 if task.name == 'crosslingual':
                     loss_func = self.crosslingual_train_loss
+                elif task.name == 'lm':
+                    loss_func = self.lm_train_loss
                 elif task.name == 'aux':
                     loss_func = self.aux_train_loss
                 else:
@@ -456,18 +475,19 @@ class Trainer(object):
 
                         def update_loss_and_stats(tgt_attr, preds, loss, batch_stats):
                             batch.tgt = getattr(batch, tgt_attr)
-                            loss_call, batch_stats_call = loss_call(batch, preds)
-                            loss += loss_call
-                            batch_stats.update(batch_stats_call)
+                            this_loss, this_batch_stats = loss_call(batch, preds)
+                            if this_loss is not None:
+                                raise RuntimeError('loss is not properly updated from within this function.')
+                            batch_stats.update(this_batch_stats)
 
-                        loss = 0.0
+                        loss = None
                         batch_stats = onmt.utils.Statistics()
                         update_loss_and_stats('tgt_agent', agent_preds, loss, batch_stats)
-                        update_loss_and_stats('tgt_agent_mod', agent_preds, loss, batch_stats)
-                        update_loss_and_stats('tgt_theme', theme_preds, loss, batch_stats)
-                        update_loss_and_stats('tgt_theme_mod', theme_preds, loss, batch_stats)
+                        # update_loss_and_stats('tgt_agent_mod', agent_preds, loss, batch_stats)
+                        # update_loss_and_stats('tgt_theme', theme_preds, loss, batch_stats)
+                        # update_loss_and_stats('tgt_theme_mod', theme_preds, loss, batch_stats)
                     else:
-                        loss, batch_stats = loss_call(batch)
+                        loss, batch_stats = loss_call(batch, outputs)
 
                     if task.name == 'crosslingual' and self.almt_reg_hyper > 0.0:
                         weight = self.model.encoder.embeddings.almt_layers['mapping'].weight
@@ -488,6 +508,7 @@ class Trainer(object):
                     traceback.print_exc()
                     logger.info("At step %d, we removed a batch - accum %d",
                                 self.optim.training_step, k)
+                    raise
 
                 # 4. Update the parameters and statistics.
                 if self.accum_count == 1:

@@ -194,7 +194,8 @@ class TransformerDecoder(DecoderBase):
             _recursive_map(self.state["cache"])
 
     def detach_state(self):
-        self.state["src"] = self.state["src"].detach()
+        if 'src' in self.state:
+            self.state["src"] = self.state["src"].detach()
 
     def _get_max_len(self):
         src_max_len = self.state["src"].shape[0]

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod, abstractproperty
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -58,7 +59,7 @@ class SwitchableModule:
 class Task(ABC):
 
     def _check_format(self, format):
-        if format not in ['eat', 'plain']:
+        if format not in ['eat', 'plain', None]:
             raise ValueError(f'Format "{format}" not supported.')
 
     def __init__(self, data_path, src_format, tgt_format, name=None, index=None):
@@ -87,7 +88,7 @@ class Task(ABC):
 class Eat2PlainMonoTask(Task):
 
     def __init__(self, data_path, name=None, index=None):
-        super().__init__(data_path, 'eat', 'plain', name=name, index=index, sides='both')
+        super().__init__(data_path, 'eat', 'plain', name=name, index=index)
 
     def set_switches(self, model):
         model.encoder.switch('encoder', False)
@@ -130,7 +131,7 @@ class Eat2PlainCrosslingualTask(Eat2PlainMonoTask):
 class EatLMMonoTask(Eat2PlainMonoTask):
 
     def __init__(self, data_path, name=None, index=None):
-        super().__init__(data_path, 'eat', None, name=name, index=index)
+        Task.__init__(self, data_path, 'eat', None, name=name, index=index)
 
     @property
     def category(self):
@@ -140,7 +141,7 @@ class EatLMMonoTask(Eat2PlainMonoTask):
 class EatLMCrosslingualTask(Eat2PlainCrosslingualTask):
 
     def __init__(self, data_path, name=None, index=None):
-        super().__init__(data_path, 'eat', None, name=name, index=index)
+        Task.__init__(self, data_path, 'eat', None, name=name, index=index)
 
     @property
     def category(self):
@@ -172,6 +173,6 @@ class RolePredictor(nn.Module):
 
     def forward(self, inp):
         return {
-            'agent': self.agent_pred(inp),
-            'theme': self.theme_pred(inp)
+            'agent': torch.log_softmax(self.agent_pred(inp), dim=-1),
+            'theme': torch.log_softmax(self.theme_pred(inp), dim=-1)
         }

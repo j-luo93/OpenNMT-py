@@ -12,7 +12,7 @@ from onmt.modules.sparse_losses import SparsemaxLoss
 from onmt.modules.sparse_activations import LogSparsemax
 
 
-def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=''):
+def build_loss_compute(model, tgt_field, opt, train=True, crosslingual='', skip_generator=False, shift_target=True):
     """
     Returns a LossCompute subclass which wraps around an nn.Module subclass
     (such as nn.NLLLoss) which defines the loss criterion. The LossCompute
@@ -21,6 +21,8 @@ def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=''):
     Currently, the NMTLossCompute class handles all loss computation except
     for when using a copy mechanism.
     """
+    skip_generator = skip_generator or crosslingual == 'lm'
+
     device = torch.device("cuda" if onmt.utils.misc.use_gpu(opt) else "cpu")
 
     padding_idx = tgt_field.vocab.stoi[tgt_field.pad_token]
@@ -33,7 +35,8 @@ def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=''):
     if crosslingual == 'old':
         criterion = BestExampleLoss(ignore_index=padding_idx)
     elif crosslingual == 'lm':
-        breakpoint()  # DEBUG
+        criterion = BestEatLMLoss(ignore_index=padding_idx, empty_index=tgt_field.vocab.stoi['<EMPTY>'])
+    elif crosslingual == '' and skip_generator:
         criterion = EatLMLoss(ignore_index=padding_idx, empty_index=tgt_field.vocab.stoi['<EMPTY>'])
     elif opt.copy_attn:
         criterion = onmt.modules.CopyGeneratorLoss(
@@ -62,7 +65,7 @@ def build_loss_compute(model, tgt_field, opt, train=True, crosslingual=''):
         )
     else:
         compute = NMTLossCompute(
-            criterion, loss_gen, lambda_coverage=opt.lambda_coverage)
+            criterion, loss_gen, lambda_coverage=opt.lambda_coverage, skip_generator=skip_generator, shift_target=shift_target)
     compute.to(device)
 
     return compute
@@ -215,8 +218,19 @@ class EatLMLoss(nn.Module):
         self.empty_index = empty_index
 
     def forward(self, output, target):
-        breakpoint()  # DEBUG
-        pass
+        target = target.view(-1, 1)
+        losses = self._get_unmasked_losses(output, target)
+        mask = (target != self.ignore_index) | (target != self.empty_index)
+        return (mask.float() * losses).sum()
+
+    def _get_unmasked_losses(self, output, target):
+        return -output.gather(1, target).squeeze(dim=1)
+
+
+class BestEatLMLoss(EatLMLoss):
+
+    def _get_unmasked_losses(self, output, target):
+        return -output.max(dim=1)[0]
 
 
 class LabelSmoothingLoss(nn.Module):
@@ -256,14 +270,17 @@ class NMTLossCompute(LossComputeBase):
     """
 
     def __init__(self, criterion, generator, normalization="sents",
-                 lambda_coverage=0.0):
+                 lambda_coverage=0.0, skip_generator=False, shift_target=True):
         super(NMTLossCompute, self).__init__(criterion, generator)
         self.lambda_coverage = lambda_coverage
+        self.skip_generator = skip_generator
+        self.shift_target = shift_target
 
     def _make_shard_state(self, batch, output, range_, attns=None):
+        range_start = range_[0] + self.shift_target
         shard_state = {
             "output": output,
-            "target": batch.tgt[range_[0] + 1: range_[1], :, 0],
+            "target": batch.tgt[range_start: range_[1], :, 0],
         }
         if self.lambda_coverage != 0.0:
             coverage = attns.get("coverage", None)
@@ -285,7 +302,10 @@ class NMTLossCompute(LossComputeBase):
 
         bottled_output = self._bottle(output)
 
-        scores = self.generator(bottled_output)
+        if self.skip_generator:
+            scores = bottled_output
+        else:
+            scores = self.generator(bottled_output)
         gtruth = target.view(-1)
 
         loss = self.criterion(scores, gtruth)

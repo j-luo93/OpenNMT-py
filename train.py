@@ -65,7 +65,7 @@ def main(opt):
             fields_info = [('train', fields, 'data', Eat2PlainMonoTask, 'base', opt.eat_formats[0]),
                            ('train', fields, 'data', EatLMMonoTask, 'lm', opt.eat_formats[1]),
                            ('train', aux_fields, 'aux_train_data', Eat2PlainAuxMonoTask, 'aux', opt.eat_formats[2]),
-                           ('train', aux_fields, 'aux_train_data', EatLMCrosslingualTask, 'crosslingual', opt.eat_format[3])]
+                           ('train', aux_fields, 'aux_train_data', EatLMCrosslingualTask, 'crosslingual', opt.eat_formats[3])]
         train_iter = build_crosslingual_dataset_iter(fields_info, opt)
     elif len(opt.data_ids) > 1:
         train_shards = []

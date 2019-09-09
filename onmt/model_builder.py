@@ -191,9 +191,9 @@ def build_base_model(model_opt, fields, gpu, checkpoint=None, gpu_id=None, aux_f
 
     # Get a predictor if needed.
     predictor = None
-    if opt.crosslingual == 'lm':
-        breakpoint() # DEBUG
-        predictor = RolePredictor(model_opt.word_vec_size, len(src_emb))
+    if model_opt.crosslingual == 'lm':
+        src_size = len(src_field.base_field.vocab)
+        predictor = RolePredictor(model_opt.word_vec_size, src_size)
 
     # Build NMTModel(= encoder + decoder).
     if gpu and gpu_id is not None:

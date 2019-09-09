@@ -205,7 +205,6 @@ class TransformerXEncoder(nn.Module, SwitchableModule):
             raise TypeError(f'Expecting a dict, but got {type(encoders)}')
 
         # Share the encoder if specified.
-        breakpoint() # DEBUG
         if share_encoder:
             logger.info('Sharing encoder in TransformerXEncoder.')
             encoders['crosslingual'] = encoders['base']

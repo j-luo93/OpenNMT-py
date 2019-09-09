@@ -20,7 +20,7 @@ class NMTModel(nn.Module):
         self.decoder = decoder
 
         # Add a predictor to predict roles if needed.
-        if predictor is not none:
+        if predictor is not None:
             self.predictor = predictor
 
     def forward(self, src, tgt, lengths, bptt=False, task=None):
@@ -47,14 +47,14 @@ class NMTModel(nn.Module):
             task.set_switches(self)
             logger.debug(f'Running {task}.')
 
-        enc_state, memory_bank, lengths = self.encoder(src, lengths)
-
         # Deal with LM tasks.
         if task is not None and task.category == 'lm':
-            breakpoint()  # DEBUG
-            output = self.predictor(enc_state)
+            src_emb = self.encoder.embeddings(src)
+            output = self.predictor(src_emb)
             return output, None
         else:
+            enc_state, memory_bank, lengths = self.encoder(src, lengths)
+
             tgt = tgt[:-1]  # exclude last target from inputs
             if bptt is False:
                 self.decoder.init_state(src, memory_bank, enc_state)
